@@ -1,0 +1,119 @@
+# Build the Snoop37 firmware (SLOOP for the M-Vave SMK-37) on every push and pull request.
+# The packages (.fwsc) are uploaded as workflow artifacts; a pushed tag v* also attaches them to a GitHub release.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  JIELI_TOOLCHAIN: /home/runner/jieli/toolchain
+  AC79_SDK: /home/runner/ac79-sdk
+  SDK_TAG: AC79NN_SDK_V1.2.1_2023-12-13
+
+jobs:
+  deps:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache JieLi toolchain and AC79 SDK files
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/jieli
+            /home/runner/ac79-sdk
+          key: jieli-deps-${{ env.SDK_TAG }}-v1
+      - name: Download the JieLi Linux toolchain
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          DEST="$(dirname "$JIELI_TOOLCHAIN")"
+          mkdir -p "$DEST"
+          curl -fL --retry 5 --retry-delay 10 https://pkgman.jieliapp.com/s/linux-toolchain | tar -xJ -C "$DEST"
+          TC="$(ls -d "$DEST"/jieli-linux-toolchains-* | sort | tail -1)"
+          ln -sfn "$(basename "$TC")" "$JIELI_TOOLCHAIN"
+          "$JIELI_TOOLCHAIN/pi32v2/bin/clang" --version
+      - name: Fetch the three AC79 SDK files the package needs
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          for i in 1 2 3 4; do
+            rm -rf "$AC79_SDK"
+            git clone --depth 1 --branch "$SDK_TAG" --filter=blob:none --sparse \
+              https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git "$AC79_SDK" &&
+            git -C "$AC79_SDK" sparse-checkout set --no-cone /cpu/wl82/tools/uboot.boot /cpu/wl82/tools/cfg_tool.bin \
+              /cpu/wl82/tools/cfg/eq_cfg_hw.bin && break
+            sleep $((i * 15))
+          done
+          find "$AC79_SDK/cpu" -type f | head
+          test -f "$AC79_SDK/cpu/wl82/tools/uboot.boot"
+
+  build:
+    needs: deps
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [pro, elite, mke]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore JieLi toolchain and AC79 SDK files
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /home/runner/jieli
+            /home/runner/ac79-sdk
+          key: jieli-deps-${{ env.SDK_TAG }}-v1
+          fail-on-cache-miss: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install Pillow
+      - name: Build Snoop37 (SMK-37 ${{ matrix.model }})
+        env:
+          BOARD: smk37
+          MODEL: ${{ matrix.model }}
+          SNOOP37: '1'
+          PYTHON: python
+        run: sh ./build.sh
+      - name: List the packages
+        run: ls -l build/*.fwsc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snoop37-${{ matrix.model }}-${{ github.sha }}
+          path: build/sloop-smk37*.fwsc
+          if-no-files-found: error
+      - name: Attach to the release (tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/sloop-smk37*.fwsc
+
+  host-tests:
+    needs: deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore JieLi toolchain and AC79 SDK files
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /home/runner/jieli
+            /home/runner/ac79-sdk
+          key: jieli-deps-${{ env.SDK_TAG }}-v1
+          fail-on-cache-miss: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: pip install Pillow mido
+      - name: Build the FM-1 image (the host tests read it)
+        env:
+          PYTHON: python
+        run: sh ./build.sh
+      - name: Host tests
+        run: sh tests/run_tests.sh

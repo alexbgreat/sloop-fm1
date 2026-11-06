@@ -5,7 +5,10 @@
 /* The LED picture is built off-line and copied one byte per column: clearing
  * and relighting would let the 10 kHz scan catch the dark gap and flicker. */
 #if BOARD_SMK37
-static uint8_t smk_fbank, smk_fbank_new;           /* FADER BANK: 0 level, 1 filter, 2 reverb, 3 delay (main.c smk_faders) */
+static uint8_t smk_fbank, smk_fbank_new;           /* FADER BANK: 0 level, 1 filter, 2 reverb, 3 delay (main.c smk_faders);
+                                                   * organ mode (the selected track plays DRAWBAR) adds 4 the bars 16'..4',
+                                                   * 5 the bars 2 2/3'..1 1/3', 6 the 1' bar, PERC, DRIVE, ROTOR */
+static uint32_t fb_nbanks(void);                   /* ui_fbank.c: 4, or 7 in organ mode */
 static uint8_t pad_steps;                          /* the pads on the PLAY layer: 0 DRUM KIT (the default), 1 STEPS;
                                                     * KNOB BANK + FADER BANK (smk_input.h, seq.c pad_drum); not kept */
 /* SMK-37 Pro: one flag per id. Ids 0..18 are the button LEDs (smk_input.h), the note keys (no LEDs of
@@ -1171,7 +1174,7 @@ UI_SMALL static void ui_input(void)
         if (pick_shown())
             pick_turn(d);
         else if (fb_shown())                              /* the FADER BANK screen: the banks */
-            fb_set(smk_fbank + (d > 0 ? 1u : 3u));
+            fb_set(smk_fbank + (d > 0 ? 1u : fb_nbanks() - 1u));
         else
         if (ui.layer == LY_STEP || smk_pad_steps) {      /* (the pads' STEPS too) */
             uint32_t pages = (trk_len(TSEL) + 15u) / 16u;
@@ -1212,7 +1215,7 @@ UI_SMALL static void ui_input(void)
     if (fb_shown()) {                                           /* SELECT (K2, or K6) turns the bank there */
         int32_t t = panel_enc(EN_SELECT);
         if (t)
-            fb_set(smk_fbank + (t > 0 ? 1u : 3u));
+            fb_set(smk_fbank + (t > 0 ? 1u : fb_nbanks() - 1u));
     }
 #endif
     uint32_t home = btn_hold(&ui.home_t0, B_HOME, now, 1);

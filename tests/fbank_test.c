@@ -48,6 +48,41 @@ int main(int argc, char **argv)
     check(smk_fbank == 0, "K2 turns the bank round (D -> A)");
     fb_close();
     check(!fb_shown(), "closed");
+    /* organ mode: the selected track plays DRAWBAR: seven banks, E..G its bars, PERC, DRIVE, ROTOR */
+    song.sel = 0;
+    set_engine_of(&trk[0], ENGI_DRAWBAR); apply_preset_to(&trk[0], 0); trk[0].engine = trk[0].eng_req;
+    check(fb_nbanks() == 7u, "organ: seven banks");
+    fb_set(6u + 1u);
+    check(smk_fbank == 0, "organ: G -> A wraps");
+    fb_set(smk_fbank + fb_nbanks() - 1u);
+    check(smk_fbank == 6, "organ: A back to G");
+    {
+        uint32_t b2 = drw_bar(&trk[0], 2);
+        fb_organ_set(0, 0, 127);                        /* bank E, fader 1: the 16' bar full */
+        check(trk[0].p[P_E0] == DRW_CUSTOM && drw_bar(&trk[0], 0) == 8u, "organ: a bar fader -> REG CUSTM, 16' at 8");
+        check(drw_bar(&trk[0], 2) == b2, "organ: the other bars as they sounded");
+        fb_organ_set(1, 3, 0);                          /* bank F, fader 4: 1 1/3' out */
+        check(drw_bar(&trk[0], 7) == 0u, "organ: 1 1/3' at 0");
+        fb_organ_set(2, 3, 127);
+        check(trk[0].p[P_E7] == 2, "organ: bank G fader 4 up: ROTOR FAST");
+        fb_organ_set(2, 3, 64);
+        check(trk[0].p[P_E7] == 1, "organ: ROTOR fader middle: SLOW");
+        fb_organ_set(2, 1, 127);
+        check(trk[0].p[P_E4] == 6, "organ: PERC fader up: the last PERC");
+        {
+            int16_t e1 = drw_pack(&trk[0], 0), e2 = drw_pack(&trk[0], 1), e3 = drw_pack(&trk[0], 2);
+            uint8_t keep[DRW_NP];
+            memcpy(keep, drw_bars[0], sizeof keep);
+            memset(drw_bars[0], 0, sizeof drw_bars[0]);
+            trk[0].p[P_E2] = 3;
+            check(drw_unpack(&trk[0], 0, e1) == 0 && drw_unpack(&trk[0], 2, e3) == 0, "organ: unpack the offsets");
+            check(drw_unpack(&trk[0], 1, (int16_t)((e2 & ~31) | (-5 & 31))) == -5, "organ: a negative offset");
+            check(!memcmp(keep, drw_bars[0], sizeof keep), "organ: the bars back out of a project");
+        }
+        smk_fbank = 5; ui.force = 1; fb_shot("fbank-organ");
+    }
+    set_engine_of(&trk[0], TRK_DEF[0][0]); trk[0].engine = trk[0].eng_req;
+    check(fb_nbanks() == 4u, "not organ: four banks");
     printf("fbank: %s\n", fails ? "FAIL" : "ok");
     return fails != 0;
 }

@@ -41,7 +41,11 @@ static const uint16_t DRW_LV[9] = {0, 2920, 4125, 5827, 8231, 11627, 16423, 2319
 
 /* the 16 registrations, one digit per bar: 16' 5 1/3' 8' 4' 2 2/3' 2' 1 3/5' 1 1/3' 1' */
 static const char *const N_DRW_REG[] = {"FLUTE", "MELLO", "HOLLW", "SMOOT", "3BAR", "BLUES", "GOSPL", "ROCK",
-                                        "TOPS", "CLARI", "REED", "STRNG", "CHAPL", "BRITE", "BASS", "FULL"};
+                                        "TOPS", "CLARI", "REED", "STRNG", "CHAPL", "BRITE", "BASS", "FULL", "CUSTM"};
+/* REG CUSTM (SMK-37 organ fader banks): the nine bars are drw_bars[part], set one by one (drw_bar_set); SUB / BODY /
+ * TOP still add to them. A project keeps them packed into E1..E3 (project.c drw_pack / drw_unpack) */
+#define DRW_CUSTOM 16
+static uint8_t drw_bars[NPART][DRW_NP];
 static const char DRW_REG[16][DRW_NP + 1] = {
     "008000000", /* FLUTE  one soft flute */
     "008400000", /* MELLO  flute and octave */
@@ -121,12 +125,49 @@ typedef struct {                 /* per voice */
 typedef struct { drw_trk_t t; drw_vc_t v[NVOICE]; } drw_part_t;
 static drw_part_t *drw_of(const track_t *t) { return (drw_part_t *)eng_arena_of(t, ENGI_DRAWBAR); }
 
-/* the bar level 0..8 of partial k: the registration plus SUB / BODY / TOP */
-static int32_t drw_level(const int16_t *p, uint32_t k)
+/* SUB / BODY / TOP: which of them moves bar k */
+static uint32_t drw_grp(uint32_t k) { return k < 2u ? P_E1 : k < 4u ? P_E2 : P_E3; }
+/* the bar level 0..8 of partial k of part pi: the registration (or CUSTM's bars) plus SUB / BODY / TOP */
+static int32_t drw_level(const int16_t *p, uint32_t pi, uint32_t k)
 {
-    int32_t d = DRW_REG[(uint32_t)p[P_E0] & 15u][k] - '0';
-    d += k < 2u ? p[P_E1] : k < 4u ? p[P_E2] : p[P_E3];
+    int32_t d = p[P_E0] == DRW_CUSTOM ? (int32_t)drw_bars[pi % NPART][k] : DRW_REG[(uint32_t)p[P_E0] & 15u][k] - '0';
+    d += p[drw_grp(k)];
     return clamp(d, 0, 8);
+}
+
+/* the SMK-37's organ mode: the selected track plays DRAWBAR (main.c smk_faders, smk_wheels; ui_fbank.c) */
+static int drw_organ(const track_t *t)
+{
+    return t >= trk && t < trk + NPART && t->eng_req == ENGI_DRAWBAR;
+}
+static uint32_t drw_bar(const track_t *t, uint32_t k) { return (uint32_t)drw_level(t->p, (uint32_t)(t - trk), k); }
+/* bar k to level v (0..8), as heard: the first bar moved turns the registration into CUSTM (as it sounds, SUB / BODY
+ * / TOP folded in) */
+static void drw_bar_set(track_t *t, uint32_t k, uint32_t v)
+{
+    uint32_t pi = (uint32_t)(t - trk) % NPART, j;
+    if (k >= DRW_NP)
+        return;
+    if (t->p[P_E0] != DRW_CUSTOM) {
+        for (j = 0; j < DRW_NP; j++)
+            drw_bars[pi][j] = (uint8_t)drw_level(t->p, pi, j);
+        t->p[P_E1] = t->p[P_E2] = t->p[P_E3] = 0;
+        t->p[P_E0] = DRW_CUSTOM;
+    }
+    drw_bars[pi][k] = (uint8_t)clamp((int32_t)(v > 8u ? 8u : v) - t->p[drw_grp(k)], 0, 8);
+}
+/* a project's E1..E3 with CUSTM: each its offset (5 bits) | three bars in base 9 << 5 */
+static int16_t drw_pack(const track_t *t, uint32_t g)
+{
+    const uint8_t *b = drw_bars[(uint32_t)(t - trk) % NPART] + 3u * g;
+    return (int16_t)(((uint32_t)t->p[P_E1 + g] & 31u) | (uint32_t)(b[0] + 9u * b[1] + 81u * b[2]) << 5);
+}
+static int16_t drw_unpack(track_t *t, uint32_t g, int16_t e)
+{
+    uint8_t *b = drw_bars[(uint32_t)(t - trk) % NPART] + 3u * g;
+    uint32_t w = ((uint32_t)(uint16_t)e >> 5) % 729u;
+    b[0] = (uint8_t)(w % 9u), b[1] = (uint8_t)(w / 9u % 9u), b[2] = (uint8_t)(w / 81u);
+    return (int16_t)((int32_t)((e & 31) ^ 16) - 16);       /* the offset, sign-extended */
 }
 
 /* once per block, before the voices: bar gains, percussion, click, drive, the rotors */
@@ -138,7 +179,7 @@ static void drawbar_block(track_t *t)
     int32_t s = 0, lv[DRW_NP];
     uint32_t norm;
     for (k = 0; k < DRW_NP; k++) {
-        lv[k] = perc && k == DRW_NP - 1u ? 0 : DRW_LV[drw_level(p, k)];   /* PERC on: the 1' bar is off */
+        lv[k] = perc && k == DRW_NP - 1u ? 0 : DRW_LV[drw_level(p, (uint32_t)(t - trk), k)];   /* PERC on: the 1' bar is off */
         s += lv[k];
     }
     /* sum of the gains = 2.4 s / (s + 1.5) (s in units of a full bar): one bar 0.96, three 1.6,
@@ -287,7 +328,7 @@ static const preset_t DRAWBAR_PRESETS[] = {
 static const engine_t ENG_DRAWBAR = {
     "WHEEL", {"BARS", "TONE"},
     {
-        {"REG", F_ENUM, 0, 15, 4, N_DRW_REG, 0},
+        {"REG", F_ENUM, 0, DRW_CUSTOM, 4, N_DRW_REG, 0},
         {"SUB", F_INT, -8, 8, 0, 0, 0},
         {"BODY", F_INT, -8, 8, 0, 0, 0},
         {"TOP", F_INT, -8, 8, 0, 0, 0},

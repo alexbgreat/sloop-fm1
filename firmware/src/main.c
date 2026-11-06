@@ -141,6 +141,14 @@ static void smk_faders(void)
         smk_fbank_new = 1;                                /* each waits to move again */
         return;
     }
+    {   /* organ mode (the selected track plays DRAWBAR): banks E..G; out of it they go back to A. Another track
+         * selected: each fader waits to move again */
+        static uint8_t sel = 0xFF;
+        if (smk_fbank >= fb_nbanks())
+            smk_fbank = 0, smk_fbank_new = 1, ui.force = 1;
+        if (sel != song.sel)
+            sel = song.sel, smk_fbank_new = 1;
+    }
     if (smk_fbank_new) {                                  /* a new bank: wait for each fader to move */
         smk_fbank_new = 0;
         for (i = 0; i < 4u; i++)
@@ -156,6 +164,11 @@ static void smk_faders(void)
         if (v == last[i])
             continue;
         last[i] = (uint8_t)v;
+        if (smk_fbank >= FB_NORM) {                       /* organ banks E..G: the selected track's bars, PERC, DRIVE, ROTOR */
+            fb_organ_set(smk_fbank - FB_NORM, i, v);
+            ui.force = 1;
+            continue;
+        }
         switch (smk_fbank) {
         case 1:
             trk[i].p[P_TFLT] = (int16_t)((int32_t)v - 64);
@@ -175,6 +188,38 @@ static void smk_faders(void)
         }
         ui.force = 1;
     }
+}
+
+/* organ mode: the mod wheel is the rotor switch, three positions: bottom STOP (DRAWBAR's ROTR OFF), middle SLOW, top
+ * FAST (voice.c: no mod-wheel vibrato on DRAWBAR). It sets ROTR only when it moves into another position (4 steps of
+ * hysteresis at each edge), so a preset's or a knob's ROTR stays until the wheel moves; a track change, likewise */
+#define SMK_ROT_EDGE1 43
+#define SMK_ROT_EDGE2 85
+#define SMK_ROT_HYST 4
+static void smk_rotor_wheel(int32_t m)
+{
+    static const char *const MSG[3] = {"ROTOR: STOP", "ROTOR: SLOW", "ROTOR: FAST"};
+    static uint8_t zone = 0xFF, sel = 0xFF;
+    track_t *t = TSEL;
+    uint32_t z;
+    if (!drw_organ(t)) {
+        zone = 0xFF;
+        return;
+    }
+    z = m < SMK_ROT_EDGE1 ? 0u : m < SMK_ROT_EDGE2 ? 1u : 2u;
+    if (zone > 2u || sel != song.sel) {               /* (organ mode just began: where the wheel is, nothing set) */
+        zone = (uint8_t)z, sel = song.sel;
+        return;
+    }
+    if (z == zone)
+        return;
+    if (z > zone ? m < (z == 1u ? SMK_ROT_EDGE1 : SMK_ROT_EDGE2) + SMK_ROT_HYST
+                 : m >= (z == 0u ? SMK_ROT_EDGE1 : SMK_ROT_EDGE2) - SMK_ROT_HYST)
+        return;                                       /* (still inside the edge's hysteresis) */
+    zone = (uint8_t)z;
+    t->p[P_E7] = (int16_t)z;
+    ui_message(MSG[z]);
+    ui.force = 1;
 }
 
 /* the wheels (stock: mux C address 4 = pitch, 5 = mod; the travel is short: raw ~445..640 pitch, ~474..629 mod on a
@@ -204,6 +249,7 @@ static void smk_wheels(void)
     }
     perf_bend = smk_pw_bend(&pw, &wcal, fm1_in.wheel[0], fm1_ms, bend_up, bend_dn);
     perf_modw = smk_mw_val(&mw, &wcal, fm1_in.wheel[1]);
+    smk_rotor_wheel(perf_modw);
 }
 #endif
 

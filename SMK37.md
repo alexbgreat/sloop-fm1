@@ -63,9 +63,9 @@ update mode (UBOOT).
 | KNOB 3 | dial 3 on screen (yellow) | K7 | dial 3 |
 | KNOB 4 | dial 4 on screen (orange) | K8 | dial 4 |
 | — | — | KNOB LAYOUT = SMK | HOME menu > SCREEN > KNOB LAYOUT (K7): K1–K4 the dials 1–4, K5 master volume, K6 SELECT, K7 PRESETS, K8 ALGORITHM (track); FM-1 (default) as above |
-| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass), C reverb, D delay; a fader takes over once moved |
+| — | — | FADER 1–4 | tracks 1–4 (4 = drums), by FADER BANK: A level, B filter (low-pass ◀ open ▶ high-pass), C reverb, D delay; a fader takes over once moved. [Organ mode](#organ-mode) adds banks E–G |
 | — (no wheels used by SLOOP) | — | PITCH wheel | pitch bend, selected synth track: HOME menu > PLAY > BEND UP (K6) / BEND DOWN (K7), OFF, 1, 2, 3, 4, 5, 7, 12 semitones each; default 7 / 7 |
-| — | — | MOD wheel | vibrato 10 Hz, up to ±1 semitone (up = more) |
+| — | — | MOD wheel | vibrato 10 Hz, up to ±1 semitone (up = more); [organ mode](#organ-mode): the rotor STOP / SLOW / FAST |
 | — | — | PEDAL jack | — |
 
 ## Buttons
@@ -92,6 +92,33 @@ update mode (UBOOT).
 | — | — | — | < | page back (as SELECT, never tempo); SEQ held or pads on STEPS: step page back; visualiser: style |
 | — | — | — | > | page forward; SEQ held or pads on STEPS: step page forward; visualiser: style |
 | — | — | — | < + > | SYNTH ↔ DAW mode ([DAW mode](#daw-mode)) |
+
+## Organ mode
+
+When the selected track plays the organ engine (DRAWBAR, sounds such as SOUL ORGAN or GOSPEL), the faders and the mod
+wheel become organ controls for that track.
+
+**FADER BANK** steps through seven banks instead of four, A → G. Banks A–D are the same as before. E–G set the
+selected track's organ:
+
+| Bank | FADER 1 | FADER 2 | FADER 3 | FADER 4 |
+|---|---|---|---|---|
+| E | 16' | 5 1/3' | 8' | 4' |
+| F | 2 2/3' | 2' | 1 3/5' | 1 1/3' |
+| G | 1' | PERC | DRIVE | ROTOR |
+
+- A drawbar fader runs 0–8, bottom to top. Moving any drawbar fader switches the sound's REG to **CUSTM**: the nine
+  bars start from the registration as it sounded (SUB / BODY / TOP folded in), then each fader sets its own bar.
+  SUB / BODY / TOP on the knobs still shift the bars on top of that.
+- CUSTM bars are kept with the project (and the autosave). User presets keep REG CUSTM but not the bar levels.
+- The screen shows each fader's footage, its level and a bar. As with the other banks, a fader only takes over once
+  it moves, and the faders wait to move again after a track change.
+- Select a track with another engine and the banks go back to A–D (on bank E–G, it returns to A).
+
+**MOD wheel = rotor switch**, three positions: bottom **STOP**, middle **SLOW** (chorale), top **FAST** (tremolo).
+The rotors ramp between speeds the way a rotary speaker does: the horn in about 1 s, the drum in about 4 s. The
+setting changes only when the wheel moves into another position, so a preset's rotor speed stays put until you
+touch the wheel. Each change shows ROTOR: STOP / SLOW / FAST briefly. On the organ the mod wheel adds no vibrato.
 
 ## Keys and pads
 
