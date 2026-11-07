@@ -421,16 +421,14 @@ static void grain_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
 
 static const preset_t GRAIN_PRESETS[] = {
     /* name, {SRC, POS, SIZE, DENS, PTCH, SPRD, RAND, TONE}, {A D S R}, fenv, mono.
-     * SRC: the SAMPLE sets (0 PIANO, 2 VIBES, 5 FLUTE...: tools/gen_samples.py CC0_SETS) */
+     * SRC: the SAMPLE sets (0 PIANO, 1 FLUTE, 2 PERC: tools/gen_samples.py CC0_SETS; Snoop37 builds in these three,
+     * so VIBE HAZE, STR CLOUD and HORN CLOUD are out and DRONE, a horn drone, is a flute one) */
     {"LOFI CLOUD", {0, 45, 95, 85, 0, 35, 12, 80}, {70, 90, 120, 90}, 0, 0, FX(0, 45, 20, 70)},
-    {"VIBE HAZE", {2, 30, 100, 90, 0, 25, 10, 90}, {50, 100, 120, 95}, 0, 0, FX(0, 40, 25, 75)},
-    {"FLUTE DUST", {5, 50, 108, 72, 0, 10, 10, 85}, {50, 100, 127, 100}, 0, 0, FX(0, 30, 20, 70)},
-    /* SLOOP 2.5: strings as a cloud, a piano shimmer an octave up, a dark horn drone */
-    {"STR CLOUD", {4, 40, 100, 90, 0, 30, 12, 80}, {70, 100, 120, 95}, 0, 0, FX(0, 50, 20, 75)},
+    {"FLUTE DUST", {1, 50, 108, 72, 0, 10, 10, 85}, {50, 100, 127, 100}, 0, 0, FX(0, 30, 20, 70)},
+    /* SLOOP 2.5: a piano shimmer an octave up, a dark drone */
     {"SHIMMER", {0, 30, 90, 95, 12, 40, 15, 110}, {60, 100, 120, 100}, 0, 0, FX(0, 40, 35, 85)},
-    {"DRONE", {3, 50, 115, 80, -12, 20, 20, 50}, {90, 100, 127, 100}, 0, 0, FX(0, 30, 15, 70)},
+    {"DRONE", {1, 50, 115, 80, -12, 20, 20, 50}, {90, 100, 127, 100}, 0, 0, FX(0, 30, 15, 70)},
     {"PNO FREEZE", {0, 40, 127, 127, 0, 5, 0, 100}, {80, 100, 127, 100}, 0, 0, FX(0, 30, 20, 75)},
-    {"HORN CLOUD", {3, 30, 100, 90, 0, 30, 15, 90}, {70, 100, 120, 95}, 0, 0, FX(0, 40, 20, 70)},
 };
 
 static const engine_t ENG_GRAIN = {

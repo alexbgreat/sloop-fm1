@@ -44,8 +44,10 @@ TR = 22050                                   # stored sample rate
 # set -> kind ("oneshot" decaying, "sus" looped sustain, "piano" its attack then a steady loop that the
 # envelope fades, "kit" one sample per key).
 # The other slots are user sets loaded from the web editor.
-CC0_SETS = [("PIANO", "piano"), ("BASS", "oneshot"), ("VIBES", "oneshot"), ("HORNS", "oneshot"),
-            ("STRGS", "oneshot"), ("FLUTE", "sus"), ("SCRCH", "oneshot"), ("KIT", "kit")]
+# Snoop37 (SMK-37 organ build): PIANO, FLUTE and the GM kit only, for flash room; BASS, VIBES, HORNS, STRGS and SCRCH
+# stay in assets/samples-cc0, out of the image (put them back here to build them in again: the set numbers, the
+# GRAIN presets' SRC (eng_grain.c), preset_trim.h and ui.c's BANK follow this list)
+CC0_SETS = [("PIANO", "piano"), ("FLUTE", "sus"), ("KIT", "kit")]
 MEASURED_TUNING = ()                         # sets recorded off A440 (measured near the named note)
 
 # the preset of each set: name, {SET (filled in), TUNE, BITS, LOOP (filled in), CUT, -, DRV, -}, env, mono,
