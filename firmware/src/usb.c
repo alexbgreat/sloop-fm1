@@ -145,6 +145,8 @@ static uint32_t spk_pkts, spk_drops;
 /* feature unit 5 (IT3 -> FU5 -> OT4: the topology Windows' usbaudio.sys builds a render endpoint from): master mute
  * and volume, -60..0 dB in 1 dB steps; the host leaves the level to the device, spk_mix applies spk_lvl (Q12) */
 #define SPK_FU 5u
+#define MIC_FU 6u                /* the input's: mute only (uac_tap sends silence) */
+static volatile uint8_t mic_mute;
 #define SPK_VMIN (-60 * 256)
 static const uint16_t SPK_DB[61] = {4096, 3651, 3254, 2900, 2584, 2303, 2053, 1830, 1631, 1453, 1295, 1154, 1029, 917,
     817, 728, 649, 579, 516, 460, 410, 365, 325, 290, 258, 230, 205, 183, 163, 145, 130, 115, 103, 92, 82, 73, 65, 58,
@@ -224,7 +226,7 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
  * per version) */
 #define CDC_IF (2 + FELUCCA_UAC + FELUCCA_UAC_OUT)
 #define UAC_AS_IF 2u
-#define CFG_LEN (101 + 74 * FELUCCA_CDC + 74 * FELUCCA_UAC + 3 * FELUCCA_UAC_48K + 84 * FELUCCA_UAC_OUT)
+#define CFG_LEN (101 + 74 * FELUCCA_CDC + 74 * FELUCCA_UAC + 3 * FELUCCA_UAC_48K + 94 * FELUCCA_UAC_OUT)
 #define USB_NIF (2 + FELUCCA_UAC + 2 * FELUCCA_CDC + FELUCCA_UAC_OUT)
 /* bcdDevice +0.40 with the audio output (hosts cache descriptors per version) */
 #if FELUCCA_CDC
@@ -248,12 +250,17 @@ static const uint8_t CFG_DESC[] = {
     9, 4, 0, 0, 0, 1, 1, 0, 0,
 #if FELUCCA_UAC
 #if FELUCCA_UAC_OUT
-    11, 0x24, 1, 0x00, 0x01, 63, 0, 3, 1, UAC_AS_IF, SPK_AS_IF,   /* AC header 1.00: MIDI + the two streams */
+    11, 0x24, 1, 0x00, 0x01, 73, 0, 3, 1, UAC_AS_IF, SPK_AS_IF,   /* AC header 1.00: MIDI + the two streams */
 #else
     10, 0x24, 1, 0x00, 0x01, 31, 0, 2, 1, UAC_AS_IF,    /* AC header 1.00: MIDI + audio streaming */
 #endif
     12, 0x24, 2, 1, 0x03, 0x06, 0, 2, 0x03, 0x00, 0, 0, /* input terminal 1: line, 2 ch (L R) */
+#if FELUCCA_UAC_OUT
+    10, 0x24, 6, MIC_FU, 1, 1, 0x01, 0x00, 0x00, 0,     /* feature unit 6, from 1: master mute (Windows wants a */
+    9, 0x24, 3, 2, 0x01, 0x01, 0, MIC_FU, 0,            /* unit on each path once there are two) ; OT2 from 6 */
+#else
     9, 0x24, 3, 2, 0x01, 0x01, 0, 1, 0,                 /* output terminal 2: USB streaming, from 1 */
+#endif
 #if FELUCCA_UAC_OUT
     12, 0x24, 2, 3, 0x01, 0x01, 0, 2, 0x03, 0x00, 0, 0, /* input terminal 3: USB streaming, 2 ch (L R) */
     10, 0x24, 6, SPK_FU, 3, 1, 0x03, 0x00, 0x00, 0,     /* feature unit 5, from 3: master mute + volume */
@@ -694,6 +701,8 @@ static void ep0_service(void)
         uint32_t n = sie_rd(S_COUNT0);
         if (uac.e0_rx == 3u && n >= 1u)
             spk_mute = ep0buf[0] & 1u;
+        if (uac.e0_rx == 5u && n >= 1u)
+            mic_mute = ep0buf[0] & 1u;
         if (uac.e0_rx == 4u && n >= 2u) {
             int32_t v = (int16_t)(ep0buf[0] | ep0buf[1] << 8);
             spk_vol = (int16_t)(v < SPK_VMIN ? SPK_VMIN : v > 0 ? 0 : v);
@@ -845,6 +854,15 @@ static void ep0_service(void)
 #if FELUCCA_UAC
 #if FELUCCA_UAC_OUT
     case 0x2101:                                        /* SET_CUR, the feature unit: mute (1 B) / volume (2 B) */
+        if (s[5] == MIC_FU && s[4] == 0u && s[3] == 1u && s[2] == 0u) {
+            if (wlength) {
+                uac.e0_rx = 5u;                         /* 5: the input's mute */
+                sie_wr(S_INDEX, 0);
+                sie_wr(S_CSR0, 0x40);
+                return;
+            }
+            goto ack;
+        }
         if (s[5] != SPK_FU || s[4] != 0u || (s[3] != 1u && s[3] != 2u) || s[2] != 0u)
             goto stall;
         if (wlength) {
@@ -860,6 +878,11 @@ static void ep0_service(void)
     case 0xA184: {
         static uint8_t fb[2];
         int32_t v;
+        if (s[5] == MIC_FU && s[4] == 0u && s[3] == 1u && s[2] == 0u && s[1] == 0x81u) {
+            fb[0] = mic_mute;
+            e0_send(fb, 1, wlength);
+            return;
+        }
         if (s[5] != SPK_FU || s[4] != 0u || (s[3] != 1u && s[3] != 2u) || s[2] != 0u)
             goto stall;
         if (s[3] == 1u) {
