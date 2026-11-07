@@ -32,7 +32,7 @@ static int walk(uint32_t mode)
     const uint8_t *c, *d;
     uint16_t cl, dl;
     uint32_t off, ac_sum = 0, ac_wt = 0, nif_alt0 = 0;
-    int in_ac = 0, lens = 1, coll = 0, it3 = 0, ot4 = 0, if3a0 = 0, if3a1 = 0, fmt = 0, ep04 = 0, ep84 = 0, csep = 0;
+    int fu5 = 0, in_ac = 0, lens = 1, coll = 0, it3 = 0, ot4 = 0, if3a0 = 0, if3a1 = 0, fmt = 0, ep04 = 0, ep84 = 0, csep = 0;
     int cur_if = -1, cur_alt = -1;
     char name[96];
     usb_rate_mode = (uint8_t)mode;
@@ -62,8 +62,10 @@ static int walk(uint32_t mode)
             }
             if (p[2] == 2u && p[3] == 3u && p[4] == 0x01u && p[5] == 0x01u && p[7] == 2u)
                 it3 = 1;
-            if (p[2] == 3u && p[3] == 4u && p[4] == 0x01u && p[5] == 0x03u && p[7] == 3u)
+            if (p[2] == 3u && p[3] == 4u && p[4] == 0x01u && p[5] == 0x03u && p[7] == SPK_FU)
                 ot4 = 1;
+            if (p[2] == 6u && p[0] == 10u && p[3] == SPK_FU && p[4] == 3u && p[5] == 1u && p[6] == 3u)
+                fu5 = 1;
         } else if (p[1] == 0x24u && cur_if == 3 && cur_alt == 1) {
             if (p[2] == 2u)
                 fmt = p[0] == 11u && p[3] == 1u && p[4] == 2u && p[5] == 2u && p[6] == 16u && p[7] == 1u &&
@@ -83,7 +85,8 @@ static int walk(uint32_t mode)
     check("  four interfaces", c[4] == 4u && nif_alt0 == 4u);
     check("  AC header: collection 1 2 3, wTotalLength = its descriptors", coll && ac_wt == ac_sum);
     check("  input terminal 3: USB streaming, 2 ch", it3);
-    check("  output terminal 4: speaker, from 3", ot4);
+    check("  feature unit 5: from 3, master mute + volume", fu5);
+    check("  output terminal 4: speaker, from 5", ot4);
     check("  IF3 alt 0 (no endpoint), alt 1 (one)", if3a0 && if3a1);
     check("  IF3 alt 1: type I, 2 ch, 16 bit, 44.1 kHz", fmt);
     check("  EP 0x03 OUT: isochronous adaptive, 192 B, 1 ms; CS EP no controls", ep04 && csep);

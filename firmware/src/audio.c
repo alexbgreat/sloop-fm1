@@ -78,7 +78,7 @@ static void spk_mix(int32_t *out, uint32_t n)
     if (!spk_go)
         return;
     r = spk_r, f = spk_frac, g = spk_gain;
-    m = song.master_q12 > 4096u ? 4096u : song.master_q12;
+    m = ((song.master_q12 > 4096u ? 4096u : song.master_q12) * spk_lvl) >> 12;   /* MASTER x the host's volume */
     for (i = 0; i < n; i++) {
         uint32_t a = spk_ring[r & (SPK_N - 1u)], b = spk_ring[(r + 1u) & (SPK_N - 1u)];
         int32_t fl = (int32_t)(f >> 1), k, l = (int16_t)a, rr = (int16_t)(a >> 16), v;

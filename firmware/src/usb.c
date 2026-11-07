@@ -142,6 +142,21 @@ static volatile uint8_t spk_alt;                 /* streaming interface 3's sett
 #endif
 static uint32_t spkrx[SPK_MAXP / 4u + 16u] __attribute__((aligned(4)));
 static uint32_t spk_pkts, spk_drops;
+/* feature unit 5 (IT3 -> FU5 -> OT4: the topology Windows' usbaudio.sys builds a render endpoint from): master mute
+ * and volume, -60..0 dB in 1 dB steps; the host leaves the level to the device, spk_mix applies spk_lvl (Q12) */
+#define SPK_FU 5u
+#define SPK_VMIN (-60 * 256)
+static const uint16_t SPK_DB[61] = {4096, 3651, 3254, 2900, 2584, 2303, 2053, 1830, 1631, 1453, 1295, 1154, 1029, 917,
+    817, 728, 649, 579, 516, 460, 410, 365, 325, 290, 258, 230, 205, 183, 163, 145, 130, 115, 103, 92, 82, 73, 65, 58,
+    52, 46, 41, 37, 33, 29, 26, 23, 21, 18, 16, 15, 13, 12, 10, 9, 8, 7, 6, 6, 5, 5, 4};
+static uint8_t spk_mute;
+static int16_t spk_vol;                          /* 1/256 dB */
+static volatile uint32_t spk_lvl = 4096u;
+static void spk_level(void)
+{
+    int32_t db = (-(int32_t)spk_vol + 128) >> 8;
+    spk_lvl = spk_mute ? 0u : SPK_DB[db < 0 ? 0 : db > 60 ? 60 : db];
+}
 #endif
 #if FELUCCA_UAC_48K
 #include "uac_fir.h"
@@ -209,7 +224,7 @@ static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
  * per version) */
 #define CDC_IF (2 + FELUCCA_UAC + FELUCCA_UAC_OUT)
 #define UAC_AS_IF 2u
-#define CFG_LEN (101 + 74 * FELUCCA_CDC + 74 * FELUCCA_UAC + 3 * FELUCCA_UAC_48K + 74 * FELUCCA_UAC_OUT)
+#define CFG_LEN (101 + 74 * FELUCCA_CDC + 74 * FELUCCA_UAC + 3 * FELUCCA_UAC_48K + 84 * FELUCCA_UAC_OUT)
 #define USB_NIF (2 + FELUCCA_UAC + 2 * FELUCCA_CDC + FELUCCA_UAC_OUT)
 /* bcdDevice +0.40 with the audio output (hosts cache descriptors per version) */
 #if FELUCCA_CDC
@@ -233,7 +248,7 @@ static const uint8_t CFG_DESC[] = {
     9, 4, 0, 0, 0, 1, 1, 0, 0,
 #if FELUCCA_UAC
 #if FELUCCA_UAC_OUT
-    11, 0x24, 1, 0x00, 0x01, 53, 0, 3, 1, UAC_AS_IF, SPK_AS_IF,   /* AC header 1.00: MIDI + the two streams */
+    11, 0x24, 1, 0x00, 0x01, 63, 0, 3, 1, UAC_AS_IF, SPK_AS_IF,   /* AC header 1.00: MIDI + the two streams */
 #else
     10, 0x24, 1, 0x00, 0x01, 31, 0, 2, 1, UAC_AS_IF,    /* AC header 1.00: MIDI + audio streaming */
 #endif
@@ -241,7 +256,8 @@ static const uint8_t CFG_DESC[] = {
     9, 0x24, 3, 2, 0x01, 0x01, 0, 1, 0,                 /* output terminal 2: USB streaming, from 1 */
 #if FELUCCA_UAC_OUT
     12, 0x24, 2, 3, 0x01, 0x01, 0, 2, 0x03, 0x00, 0, 0, /* input terminal 3: USB streaming, 2 ch (L R) */
-    9, 0x24, 3, 4, 0x01, 0x03, 0, 3, 0,                 /* output terminal 4: speaker, from 3 */
+    10, 0x24, 6, SPK_FU, 3, 1, 0x03, 0x00, 0x00, 0,     /* feature unit 5, from 3: master mute + volume */
+    9, 0x24, 3, 4, 0x01, 0x03, 0, SPK_FU, 0,            /* output terminal 4: speaker, from 5 */
 #endif
 #else
     9, 0x24, 1, 0x00, 0x01, 9, 0, 1, 1,
@@ -673,6 +689,20 @@ static void ep0_service(void)
     }
 #endif
 #if FELUCCA_UAC
+#if FELUCCA_UAC_OUT
+    if (uac.e0_rx >= 3u) {                              /* SET_CUR, the feature unit */
+        uint32_t n = sie_rd(S_COUNT0);
+        if (uac.e0_rx == 3u && n >= 1u)
+            spk_mute = ep0buf[0] & 1u;
+        if (uac.e0_rx == 4u && n >= 2u) {
+            int32_t v = (int16_t)(ep0buf[0] | ep0buf[1] << 8);
+            spk_vol = (int16_t)(v < SPK_VMIN ? SPK_VMIN : v > 0 ? 0 : v);
+        }
+        spk_level();
+        uac.e0_rx = 0;
+        goto ack;
+    }
+#endif
     if (uac.e0_rx) {                                    /* SET_CUR sampling frequency: 3 bytes, Hz */
         uac.rate_sets++;
         if (sie_rd(S_COUNT0) >= 3u
@@ -776,8 +806,12 @@ static void ep0_service(void)
         uint32_t ep = s[4] & 0x0Fu, last = 1u;
 #endif
 #if FELUCCA_UAC
-        if (wvalue == 0 && (s[4] == 0x84u || (FELUCCA_UAC_OUT && s[4] == SPK_EP)))
-            goto ack;                                   /* isochronous: no halt, no toggle */
+        if (wvalue == 0 && s[4] == 0x84u)
+            goto ack;
+#if FELUCCA_UAC_OUT
+        if (wvalue == 0 && s[4] == SPK_EP)
+            goto ack;
+#endif                                   /* isochronous: no halt, no toggle */
 #endif
         if (wvalue != 0 || ep > last)
             goto stall;                                 /* not an endpoint we have */
@@ -809,6 +843,39 @@ static void ep0_service(void)
         goto ack;
 #endif
 #if FELUCCA_UAC
+#if FELUCCA_UAC_OUT
+    case 0x2101:                                        /* SET_CUR, the feature unit: mute (1 B) / volume (2 B) */
+        if (s[5] != SPK_FU || s[4] != 0u || (s[3] != 1u && s[3] != 2u) || s[2] != 0u)
+            goto stall;
+        if (wlength) {
+            uac.e0_rx = (uint8_t)(2u + s[3]);           /* 3 mute, 4 volume */
+            sie_wr(S_INDEX, 0);
+            sie_wr(S_CSR0, 0x40);
+            return;
+        }
+        goto ack;
+    case 0xA181:                                        /* GET_CUR / MIN / MAX / RES, the feature unit */
+    case 0xA182:
+    case 0xA183:
+    case 0xA184: {
+        static uint8_t fb[2];
+        int32_t v;
+        if (s[5] != SPK_FU || s[4] != 0u || (s[3] != 1u && s[3] != 2u) || s[2] != 0u)
+            goto stall;
+        if (s[3] == 1u) {
+            if (s[1] != 0x81u)
+                goto stall;                             /* (mute: CUR only) */
+            fb[0] = spk_mute;
+            e0_send(fb, 1, wlength);
+            return;
+        }
+        v = s[1] == 0x81u ? spk_vol : s[1] == 0x82u ? SPK_VMIN : s[1] == 0x83u ? 0 : 256;
+        fb[0] = (uint8_t)(v & 0xFF);
+        fb[1] = (uint8_t)((v >> 8) & 0xFF);
+        e0_send(fb, 2, wlength);
+        return;
+    }
+#endif
     case 0x2201:                                        /* SET_CUR, endpoint: sampling frequency */
 #if FELUCCA_UAC_OUT
         if (s[4] == SPK_EP && s[3] == 1u) {             /* the output's: 44.1 only, the data taken and ignored */
