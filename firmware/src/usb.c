@@ -142,6 +142,11 @@ static volatile uint8_t spk_alt;                 /* streaming interface 3's sett
 #endif
 static uint32_t spkrx[SPK_MAXP / 4u + 16u] __attribute__((aligned(4)));
 static uint32_t spk_pkts, spk_drops;
+/* bench (editor USB_LOG 78): spk_mode bit 0 = look every poll (else the RX flag, and every 8th poll), bit 1 = clear
+ * without FlushFIFO; counters: RXCSR OverRun / DataError seen, packets found by the fallback look, the longest
+ * gap between packets in polls (0.5 ms), the polls */
+static uint8_t spk_mode;
+static uint32_t spk_ovr, spk_derr, spk_fb, spk_gap, spk_polls, spk_lastp;
 /* feature unit 5 (IT3 -> FU5 -> OT4: the topology Windows' usbaudio.sys builds a render endpoint from): master mute
  * and volume, -60..0 dB in 1 dB steps; the host leaves the level to the device, spk_mix applies spk_lvl (Q12) */
 #define SPK_FU 5u
@@ -551,8 +556,15 @@ static void spk_rx(void)                                /* TIMER5: a packet from
     uint32_t csr, n, i, w;
     sie_wr(S_INDEX, SPK_EP);
     csr = sie_rd(S_RXCSR1) | (sie_rd(S_RXCSR2) << 8);
+    if (csr & 0x04u)
+        spk_ovr++;
+    if (csr & 0x08u)
+        spk_derr++;
     if (!(csr & 1u))
         return;
+    if (spk_lastp && spk_polls - spk_lastp > spk_gap)
+        spk_gap = spk_polls - spk_lastp;
+    spk_lastp = spk_polls;
     n = sie_rd(S_RXCOUNT1) | (sie_rd(S_RXCOUNT2) << 8);
     if (n > SPK_MAXP)
         n = SPK_MAXP;
@@ -567,7 +579,7 @@ static void spk_rx(void)                                /* TIMER5: a packet from
     } else {
         spk_drops++;                                    /* (the render re-centres the ring) */
     }
-    csr = (csr & ~0x164u) | 0x10u;
+    csr = (csr & ~0x164u) | (spk_mode & 2u ? 0u : 0x10u);
     sie_wr(S_RXCSR1, csr & 0xFFu);
     sie_wr(S_RXCSR2, csr >> 8);
 }
@@ -1582,8 +1594,16 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 #if FELUCCA_UAC_OUT
     {
         static uint8_t k;                               /* (and every 8th poll: a flag missed leaves no packet held) */
-        if (spk_alt && ((ir & (1u << SPK_EP)) || !(++k & 7u)))
-            spk_rx();
+        spk_polls++;
+        if (spk_alt) {
+            if ((spk_mode & 1u) || (ir & (1u << SPK_EP)))
+                spk_rx();
+            else if (!(++k & 7u)) {
+                uint32_t p = spk_pkts;
+                spk_rx();
+                spk_fb += spk_pkts - p;
+            }
+        }
     }
 #endif
 #if FELUCCA_UAC
