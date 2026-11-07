@@ -99,6 +99,12 @@ void fm1_timer5_irq(void)
         if (usb_due)
             uac_service();
 #endif
+#if FELUCCA_UAC_OUT
+        if (usb_due && spk_alt)
+            spk_rx();                           /* the USB audio output too: a packet a 1 ms frame, one held at a time
+                                                 * (the next one overruns it): it cannot wait for the render's end.
+                                                 * EP3 only (INDEX set first), the producer side of spk_ring */
+#endif
         t5_nested_ticks += fm1_ticks() - t0;
         return;
     }

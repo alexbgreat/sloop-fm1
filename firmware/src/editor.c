@@ -712,9 +712,8 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
     case 78u: {                                            /* USB_LOG (SMK-37, a bench tool): the last class requests on EP0:
                                                             * count, then 8 x 11 bytes, each as two 4-bit halves (low first) */
         uint32_t i, k;
-        if (na >= 1u) {                                    /* (a mode: set it, the counters from zero) */
-            spk_mode = a[0];
-            spk_pkts = spk_drops = spk_ovr = spk_derr = spk_fb = spk_gap = 0;
+        if (na >= 1u) {                                    /* (an argument: the counters from zero) */
+            spk_pkts = spk_drops = spk_ovr = spk_derr = spk_gap = 0;
             spk_lastp = 0;
             spk_frames = spk_nmax = 0;
             spk_nmin = 0xFFFFu;
@@ -738,11 +737,11 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
             ed_v((int32_t)spk_master_lin);
             ed_b(usbin_lvl);
             {
-                uint32_t c[8] = {spk_ovr, spk_derr, spk_fb, spk_gap, spk_polls, spk_frames, spk_nmin, spk_nmax};
+                uint32_t c[8] = {spk_ovr, spk_derr, 0, spk_gap, spk_polls, spk_frames, spk_nmin, spk_nmax};
                 for (i = 0; i < 8u; i++)
                     for (k = 0; k < 5u; k++)
                         ed_b(c[i] >> (7u * k));
-                ed_b(spk_mode);
+                ed_b(0);
             }
         }
         break;

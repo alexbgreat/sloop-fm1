@@ -142,11 +142,9 @@ static volatile uint8_t spk_alt;                 /* streaming interface 3's sett
 #endif
 static uint32_t spkrx[SPK_MAXP / 4u + 16u] __attribute__((aligned(4)));
 static uint32_t spk_pkts, spk_drops;
-/* bench (editor USB_LOG 78): spk_mode bit 0 = look every poll (else the RX flag, and every 8th poll), bit 1 = clear
- * without FlushFIFO; counters: RXCSR OverRun / DataError seen, packets found by the fallback look, the longest
- * gap between packets in polls (0.5 ms), the polls */
-static uint8_t spk_mode;
-static uint32_t spk_ovr, spk_derr, spk_fb, spk_gap, spk_polls, spk_lastp, spk_frames, spk_nmin = 0xFFFFu, spk_nmax;
+/* bench (editor USB_LOG 78): packets that overran the one held (RXCSR OverRun), DataError, the longest gap between
+ * packets in looks (0.5 ms, nested or not), the looks, frames, packet bytes min / max */
+static uint32_t spk_ovr, spk_derr, spk_gap, spk_polls, spk_lastp, spk_frames, spk_nmin = 0xFFFFu, spk_nmax;
 /* feature unit 5 (IT3 -> FU5 -> OT4: the topology Windows' usbaudio.sys builds a render endpoint from): master mute
  * and volume, -60..0 dB in 1 dB steps; the host leaves the level to the device, spk_mix applies spk_lvl (Q12) */
 #define SPK_FU 5u
@@ -554,6 +552,7 @@ static void spk_config(void)                            /* EP3 OUT: isochronous,
 static void spk_rx(void)                                /* TIMER5: a packet from the host into the ring */
 {
     uint32_t csr, n, i, w;
+    spk_polls++;
     sie_wr(S_INDEX, SPK_EP);
     csr = sie_rd(S_RXCSR1) | (sie_rd(S_RXCSR2) << 8);
     if (!(csr & 1u))
@@ -584,7 +583,7 @@ static void spk_rx(void)                                /* TIMER5: a packet from
     } else {
         spk_drops++;                                    /* (the render re-centres the ring) */
     }
-    csr = (csr & ~0x164u) | (spk_mode & 2u ? 0u : 0x10u);
+    csr = (csr & ~0x164u) | 0x10u;                     /* (FlushFIFO is what frees the buffer here) */
     sie_wr(S_RXCSR1, csr & 0xFFu);
     sie_wr(S_RXCSR2, csr >> 8);
 }
@@ -601,7 +600,7 @@ static void ep1_config(void)
     sie_wr(S_RXMAXP, 0xFF);
     sie_wr(S_RXCSR1, 0x90);
     sie_wr(S_RXCSR2, 0);
-    sie_wr(S_INTRRX1E, 0x02 | 0x08 * FELUCCA_UAC_OUT);
+    sie_wr(S_INTRRX1E, 0x02);                           /* (EP3 OUT: looked at every poll, no flag needed) */
     fm1_usb_ep_enable(1u << 1);
 #if FELUCCA_CDC
     fm1_usb_ep_txbuf(2, ep2tx);
@@ -1597,19 +1596,8 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
     }
 #endif
 #if FELUCCA_UAC_OUT
-    {
-        static uint8_t k;                               /* (and every 8th poll: a flag missed leaves no packet held) */
-        spk_polls++;
-        if (spk_alt) {
-            if ((spk_mode & 1u) || (ir & (1u << SPK_EP)))
-                spk_rx();
-            else if (!(++k & 7u)) {
-                uint32_t p = spk_pkts;
-                spk_rx();
-                spk_fb += spk_pkts - p;
-            }
-        }
-    }
+    if (spk_alt)
+        spk_rx();                                       /* every poll (and nested in the render: main.c fm1_timer5_irq) */
 #endif
 #if FELUCCA_UAC
     uac_service();
