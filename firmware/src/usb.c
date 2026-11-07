@@ -146,7 +146,7 @@ static uint32_t spk_pkts, spk_drops;
  * without FlushFIFO; counters: RXCSR OverRun / DataError seen, packets found by the fallback look, the longest
  * gap between packets in polls (0.5 ms), the polls */
 static uint8_t spk_mode;
-static uint32_t spk_ovr, spk_derr, spk_fb, spk_gap, spk_polls, spk_lastp;
+static uint32_t spk_ovr, spk_derr, spk_fb, spk_gap, spk_polls, spk_lastp, spk_frames, spk_nmin = 0xFFFFu, spk_nmax;
 /* feature unit 5 (IT3 -> FU5 -> OT4: the topology Windows' usbaudio.sys builds a render endpoint from): master mute
  * and volume, -60..0 dB in 1 dB steps; the host leaves the level to the device, spk_mix applies spk_lvl (Q12) */
 #define SPK_FU 5u
@@ -556,19 +556,24 @@ static void spk_rx(void)                                /* TIMER5: a packet from
     uint32_t csr, n, i, w;
     sie_wr(S_INDEX, SPK_EP);
     csr = sie_rd(S_RXCSR1) | (sie_rd(S_RXCSR2) << 8);
+    if (!(csr & 1u))
+        return;
     if (csr & 0x04u)
         spk_ovr++;
     if (csr & 0x08u)
         spk_derr++;
-    if (!(csr & 1u))
-        return;
     if (spk_lastp && spk_polls - spk_lastp > spk_gap)
         spk_gap = spk_polls - spk_lastp;
     spk_lastp = spk_polls;
     n = sie_rd(S_RXCOUNT1) | (sie_rd(S_RXCOUNT2) << 8);
+    if (n < spk_nmin)
+        spk_nmin = n;
+    if (n > spk_nmax)
+        spk_nmax = n;
     if (n > SPK_MAXP)
         n = SPK_MAXP;
     n >>= 2;
+    spk_frames += n;
     fm1_usb_rx_sync();
     w = spk_w;
     if (w - spk_r + n < SPK_N) {
