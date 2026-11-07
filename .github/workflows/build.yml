@@ -78,6 +78,16 @@ jobs:
           SNOOP37: '1'
           PYTHON: python
         run: sh ./build.sh
+      - name: Code size by function (the 40 largest, and the organ's)
+        if: always()
+        run: |
+          NM="$(ls "$JIELI_TOOLCHAIN"/pi32v2/bin/*nm* 2>/dev/null | head -1)"
+          echo "nm: $NM"
+          [ -n "$NM" ] && [ -f build/felucca.o ] || exit 0
+          "$NM" -S --size-sort -t d build/felucca.o | grep -iE " [tT] " > build/sizes.txt || true
+          tail -40 build/sizes.txt
+          echo "--- organ / fader bank / menu"
+          grep -E "drw_|drawbar|fb_|smk_rotor|smk_faders|mi_set|mi_value|draw_menu|page_desc|page_shown|param_format|proj_apply|proj_capture" build/sizes.txt || true
       - name: List the packages
         run: ls -l build/*.fwsc
       - uses: actions/upload-artifact@v4
