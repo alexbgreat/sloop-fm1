@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Host test of the SMK-37's USB audio output descriptors (src/usb.c FELUCCA_UAC_OUT): the configuration parsed as a
  * host does: lengths, four interfaces, the AC header's collection (1 2 3) and its wTotalLength, terminals 3 (USB
- * streaming) -> 4 (speaker), interface 3's alt 0 / alt 1, its type I format (2 ch 16 bit 44.1) and EP 0x04
+ * streaming) -> 4 (speaker), interface 3's alt 0 / alt 1, its type I format (2 ch 16 bit 44.1) and EP 0x03
  * (isochronous adaptive, 192 B), next to the input's EP 0x84. The SIE is never touched. */
 #include <stdint.h>
 #include <stdio.h>
@@ -69,7 +69,7 @@ static int walk(uint32_t mode)
                 fmt = p[0] == 11u && p[3] == 1u && p[4] == 2u && p[5] == 2u && p[6] == 16u && p[7] == 1u &&
                       (p[8] | p[9] << 8 | p[10] << 16) == 44100;
         } else if (p[1] == 5u) {
-            if (p[2] == 0x04u)
+            if (p[2] == SPK_EP)
                 ep04 = cur_if == 3 && cur_alt == 1 && p[0] == 9u && p[3] == 0x09u && (p[4] | p[5] << 8) == SPK_MAXP &&
                        p[6] == 1u;
             if (p[2] == 0x84u)
@@ -86,7 +86,7 @@ static int walk(uint32_t mode)
     check("  output terminal 4: speaker, from 3", ot4);
     check("  IF3 alt 0 (no endpoint), alt 1 (one)", if3a0 && if3a1);
     check("  IF3 alt 1: type I, 2 ch, 16 bit, 44.1 kHz", fmt);
-    check("  EP 0x04 OUT: isochronous adaptive, 192 B, 1 ms; CS EP no controls", ep04 && csep);
+    check("  EP 0x03 OUT: isochronous adaptive, 192 B, 1 ms; CS EP no controls", ep04 && csep);
     check("  EP 0x84 IN still on IF2 alt 1", ep84);
     return 0;
 }
