@@ -720,6 +720,17 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
             }
         ed_b(spk_mute);
         ed_v(spk_vol / 256);                               /* dB */
+        {   /* the stream: alt, packets, drops, playing, the ring's fill, the resampler's step - 65536, MASTER (lin) */
+            uint32_t v[3] = {spk_pkts, spk_drops, spk_w - spk_r};
+            ed_b(spk_alt);
+            for (i = 0; i < 3u; i++)
+                for (k = 0; k < 5u; k++)
+                    ed_b(v[i] >> (7u * k));
+            ed_b(spk_go);
+            ed_v((int32_t)spk_step - 65536);
+            ed_v((int32_t)spk_master_lin);
+            ed_b(usbin_lvl);
+        }
         break;
     }
 #endif
