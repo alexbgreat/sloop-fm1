@@ -960,6 +960,16 @@ stall:
 }
 
 /* SysEx assembly: only short commands matter here */
+/* FELUCCA_MVOL (SMK-37): the Universal Real-Time SysEx Master Volume, F0 7F <device> 04 01 <lsb> <msb> F7 (any device
+ * ID), sets the MASTER level from the computer: core.h ed_master, as the editor's LIVE page does (main.c: it holds
+ * until the knob is turned; the MASTER knob's law, 0 .. full in 127 steps) */
+#ifndef FELUCCA_MVOL
+#if defined(BOARD_SMK37) && !defined(FELUCCA_LOADER)
+#define FELUCCA_MVOL BOARD_SMK37
+#else
+#define FELUCCA_MVOL 0
+#endif
+#endif
 static void sysex_byte(uint8_t b)
 {
     static const uint8_t UBOOT_KEY[6] = {0xF0, 0x22, 0x24, 0x35, 0x7D, 0xF7};
@@ -998,6 +1008,13 @@ static void sysex_byte(uint8_t b)
             ok = usb.sysex[i] == UBOOT_KEY[i];
         if (ok)
             usb.uboot_req = 1;
+#if FELUCCA_MVOL
+        else if (usb.sx_len == 8u && usb.sysex[1] == 0x7Fu && usb.sysex[3] == 0x04u && usb.sysex[4] == 0x01u) {
+            uint32_t msb = usb.sysex[6] & 0x7Fu;
+            ed_master_k = 0xFFFFu;                      /* (the knob's position now: turning it takes over) */
+            ed_master = (uint8_t)((msb > 126u ? 126u : msb) + 1u);
+        }
+#endif
 #if FELUCCA_OTA
         else if (usb.sx_len == 6u && usb.sysex[1] == 0x22 && usb.sysex[2] == 0x24 && usb.sysex[3] == 0x35 &&
                  usb.sysex[4] == 0x7F)

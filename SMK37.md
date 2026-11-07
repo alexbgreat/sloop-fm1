@@ -288,3 +288,12 @@ FADER BANK closes it (one screen at a time).
 - `FELUCCA_UART` must stay 0 on the SMK-37 (PH8, the FM-1's MIDI IN, is a key-matrix row there): the build refuses
   otherwise. The SMK-37's TRS MIDI OUT is its own driver (`firmware/hal/smk_uart_tx.h`, `firmware/src/smk_midi_out.h`).
 - Power the keyboard from a reliable USB port during an update and do not unplug it while the update screen is up.
+
+## USB audio and remote MASTER
+
+- **USB audio output:** the keyboard is a USB speaker too ("Speakers (Felucca)", 44.1 kHz stereo). The computer's sound is
+  mixed after the synth at the MASTER level, times the computer's own volume slider (the keyboard's hardware volume, −60..0
+  dB). It is not sent back into the USB recording ("Line (Felucca)").
+- **MASTER from the computer:** the Universal Real-Time SysEx Master Volume, `F0 7F 7F 04 01 <lsb> <msb> F7` (any device
+  ID; the MSB sets the level, 0..127 = 0..100 % of the knob's travel), sets MASTER and shows it in the top bar. It holds
+  until the MASTER knob is turned.

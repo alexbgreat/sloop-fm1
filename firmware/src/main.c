@@ -431,6 +431,21 @@ UI_SMALL static void fm1_main(void)
                         k10 = (ed_master - 1u) * 1023u / 126u;
                 }
 #if BOARD_SMK37
+                {   /* a level set from the computer (SysEx Master Volume, the LIVE page): MASTER and its level */
+                    static uint8_t em_shown;
+                    if (ed_master && ed_master != em_shown) {
+                        uint32_t p = (ed_master - 1u) * 100u / 126u;
+                        char d[5] = {0}, *q = d;
+                        if (p >= 100u)
+                            *q++ = '1';
+                        if (p >= 10u)
+                            *q++ = (char)('0' + p / 10u % 10u);
+                        *q++ = (char)('0' + p % 10u);
+                        *q = '%';
+                        ui_say("MASTER ", d);
+                    }
+                    em_shown = ed_master;
+                }
                 {   /* the volume knob is endless here, with no position to see: a turn shows MASTER and its level in
                      * the top bar (Snoop37 #1) */
                     static int32_t shown = -1;
