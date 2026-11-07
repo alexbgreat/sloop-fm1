@@ -10,7 +10,11 @@ static const char *const FB_NAME[FB_ORGAN] = {"LEVEL", "FILTER", "REVERB", "DELA
 /* organ banks E..G: fader i of bank 4 + g is bar 4g + i, but bank G's 2..4: PERC, DRIVE, ROTOR (DRAWBAR's E4, E6, E7) */
 static const char *const FB_BAR[DRW_NP] = {"16'", "5 1/3'", "8'", "4'", "2 2/3'", "2'", "1 3/5'", "1 1/3'", "1'"};
 static const uint8_t FB_OPAR[3] = {P_E4, P_E6, P_E7};
-#define FB_SHOW_MS 4000u                           /* up this long after the last change */
+#define FB_SHOW_MS 4000u                           /* up this long after the last change (FADER SCREEN 4 S) */
+/* HOME menu > FADERS > FADER SCREEN (kept in the SMK-37 settings): how long the screen stays up after the last bank
+ * change or fader move; HOLD: until PATCH closes it, or another screen (the pad picker, a layer) takes its place */
+enum { FBS_4S, FBS_10S, FBS_HOLD };                /* (ui_menu.c FBS_N, FBS_NAME) */
+static uint8_t fb_screen;
 static uint8_t fb_open;
 static uint32_t fb_t, fb_frame;                    /* last action (ms); the frame drawn last */
 
@@ -27,10 +31,16 @@ static void fb_set(uint32_t b)                     /* bank b, the screen up */
     ui.force = 1;
 }
 static void fb_close(void) { fb_open = 0; }
-static void fb_expire(void)                        /* up FB_SHOW_MS after the last change */
+static void fb_expire(void)                        /* up FADER SCREEN's time after the last change or fader move */
 {
-    if (fb_open && fm1_ms - fb_t > FB_SHOW_MS)
+    uint32_t ms = fb_screen == FBS_10S ? 10000u : FB_SHOW_MS;
+    if (fb_open && fb_screen != FBS_HOLD && fm1_ms - fb_t > ms)
         fb_open = 0, ui.force = 1;
+}
+static void fb_touch(void)                         /* a fader moved (main.c smk_faders): the screen stays up */
+{
+    if (fb_open)
+        fb_t = fm1_ms;
 }
 static int fb_left(void)                           /* drawn last frame, not now: the page needs a redraw */
 {

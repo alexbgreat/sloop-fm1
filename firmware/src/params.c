@@ -364,6 +364,14 @@ static void param_format(const param_desc_t *d, int32_t v, char *val, const char
         fmt_int(val, v);
         *unit = "STEP";
         break;
+    case F_HZD10:
+        fmt_fix(val, v, 1);
+        *unit = "Hz";
+        break;
+    case F_HZX10:
+        fmt_int(val, v * 10);
+        *unit = "Hz";
+        break;
     default:
         if (d->names) {                               /* F_INT with a 0-terminated name list: the range */
             uint32_t k = 0;                           /* split evenly over the names (engine desc hooks) */
@@ -382,7 +390,8 @@ static void param_format(const param_desc_t *d, int32_t v, char *val, const char
 /* ------------------------------------------------------------ pages --- */
 enum { FAM_HOME, FAM_ENV, FAM_LFO, FAM_FX, FAM_SCL, FAM_EDIT, FAM_GLO, FAM_SAVE, FAM_ARP, FAM_SEQ, FAM_TRK,
        FAM_COUNT };
-enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK, SC_SONG, SC_DRUM };
+enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK, SC_SONG, SC_DRUM,
+       SC_ROTOR };                                  /* DRAWBAR's ROTOR pages: eng_drawbar.c drw_rot, ids RT_* */
 enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_BROWSE, GR_SLOTS, GR_USER, GR_TRK,
        GR_SLCR, GR_INS };
 
@@ -410,6 +419,8 @@ static const page_t PAGES[] = {
     {"SEL 2", FAM_SCL, SC_TRACK, GR_SCALE, {P_TRANS, P_STRUM, P_VLEAD, 0xFF}},   /* (2.4: the chords played) */
     {"EDIT 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},
     {"EDIT 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_E7}},
+    {"ROTOR", FAM_EDIT, SC_ROTOR, GR_NONE, {RT_SLOW, RT_FAST, RT_ACCEL, RT_DEPTH}},   /* DRAWBAR only (page_shown): */
+    {"ROTOR 2", FAM_EDIT, SC_ROTOR, GR_NONE, {RT_DRUM, RT_BAL, RT_XOVER, RT_DOPL}},  /* the rotary speaker */
     {"FILTER", FAM_EDIT, SC_TRACK, GR_NONE, {P_FTYPE, P_E4, P_E5, P_E7}},   /* ANALOG only (2.6, Felucca 1.5): TYPE CUT
                                                                           * RES KTR (page_shown) */
     {"VOICE", FAM_EDIT, SC_TRACK, GR_NONE, {P_VOICE, P_GLIDE, P_GLMODE, P_PRIO}},
@@ -448,12 +459,14 @@ static int page_for_drum(const page_t *pg)
         return 0;                                   /* by ALGO from a synth track, it drew the drum steps as notes */
     if (pg->scope == SC_GLOBAL)
         return pg->graph != GR_BROWSE && pg->graph != GR_USER;
-    return pg->scope != SC_ENGINE && (pg->scope != SC_TRACK || pg->fam == FAM_SEQ || pg->graph == GR_SLCR ||
+    return pg->scope != SC_ENGINE && pg->scope != SC_ROTOR && (pg->scope != SC_TRACK || pg->fam == FAM_SEQ || pg->graph == GR_SLCR ||
                                       pg->graph == GR_INS);
 }
 /* a page the buttons and SELECT reach on the selected track: EDIT > FILTER (TYPE) on ANALOG only */
 static int page_shown(const page_t *pg)
 {
+    if (pg->scope == SC_ROTOR)                      /* ROTOR, ROTOR 2: DRAWBAR only */
+        return drw_organ(TSEL);
     return pg->id[0] != P_FTYPE || (!is_drum(TSEL) && TSEL->eng_req % NENGINES == 0u);
 }
 
@@ -471,6 +484,14 @@ static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **
     if (pg->scope == SC_GLOBAL) {
         *valp = &song.g[id];
         return &GP[id];
+    }
+    if (pg->scope == SC_ROTOR) {                    /* DRAWBAR's rotary speaker (eng_drawbar.c drw_rot) */
+        if (!drw_organ(TSEL)) {
+            *valp = 0;
+            return 0;
+        }
+        *valp = &drw_rot[song.sel % NPART][id % RT_N];
+        return &DRW_ROT_DESC[id % RT_N];
     }
     *valp = &TSEL->p[id];
     return track_desc(TSEL, id);

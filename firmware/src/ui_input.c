@@ -630,10 +630,10 @@ UI_SMALL static void edit_param(uint32_t slot, int32_t steps)
     v = d->names == ESYNC_NAMES || d->names == N_IBITS || d->names == N_IRATE ? names_turn(d, *vp, steps)   /* (a name a detent) */
                                     : clamp(*vp + accel(EN_K1 + slot, steps, d->names ? 0 : d->max - d->min), d->min, d->max);
     *vp = (int16_t)v;
-    if (pg->scope != SC_GLOBAL && p_lockable(id))
+    if (pg->scope != SC_GLOBAL && pg->scope != SC_ROTOR && p_lockable(id))
         ui.lock_par = (uint8_t)id;                        /* the SEQ layer's lock parameter: the last one touched */
-    if (pg->scope != SC_GLOBAL)
-        ml_knob(TSEL, id);                                /* MIDI LEARN: this parameter (2.6) */
+    if (pg->scope != SC_GLOBAL && pg->scope != SC_ROTOR)
+        ml_knob(TSEL, id);                                /* MIDI LEARN: this parameter (2.6; not the ROTOR pages) */
     if (!v)
         return;
     if (pg->scope == SC_GLOBAL && (id == G_LOAD || id == G_SAVE || id == G_CLRSEQ || id == G_INITSND || id == G_NEWPRJ) &&

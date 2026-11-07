@@ -797,7 +797,8 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
                 uint32_t ph = fm1_ticks() * SMK_VIB_K;
                 int32_t tri = (int32_t)((ph >> 15) & 0xFFFFu);
                 tri = (ph & 0x80000000u ? 0xFFFF - tri : tri) - 32768;   /* triangle, +-32767 */
-                q += perf_bend + (t->engine == ENGI_DRAWBAR ? 0 : (tri * perf_modw) >> 10);   /* (organ: the mod wheel is the rotor) */
+                q += perf_bend + (t->engine == ENGI_DRAWBAR && !drw_wheel_vib ? 0 : (tri * perf_modw) >> 10);   /* (organ: the mod
+                                                 * wheel is the rotor, unless ORGAN WHEEL = VIBRATO) */
             }
 #endif
             pitch = (q >> 8) + tune;

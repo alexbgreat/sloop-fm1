@@ -164,6 +164,7 @@ static void smk_faders(void)
         if (v == last[i])
             continue;
         last[i] = (uint8_t)v;
+        fb_touch();                                       /* (the FADER BANK screen stays up while a fader moves) */
         if (smk_fbank >= FB_NORM) {                       /* organ banks E..G: the selected track's bars, PERC, DRIVE, ROTOR */
             fb_organ_set(smk_fbank - FB_NORM, i, v);
             ui.force = 1;
@@ -202,7 +203,7 @@ static void smk_rotor_wheel(int32_t m)
     static uint8_t zone = 0xFF, sel = 0xFF;
     track_t *t = TSEL;
     uint32_t z;
-    if (!drw_organ(t)) {
+    if (!drw_organ(t) || drw_wheel_vib) {             /* (HOME menu > FADERS > ORGAN WHEEL VIBRATO: the mod wheel as usual) */
         zone = 0xFF;
         return;
     }

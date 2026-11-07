@@ -221,7 +221,8 @@ int main(int argc, char **argv)
     check(ui.menu == 1 && ui.menu_sel == MI_TRS, "PATCH held: the menu, at MIDI");
     shot("daw-menu-midi");
     check(MS_FIRST[MS_PLAY] == MI_VEL && MS_FIRST[MS_MIDI] == MI_TRS && MS_FIRST[MS_DAW] == MI_DMAP && MI_LOCAL - MI_TRS == 3 &&
-          MI_DRESET - MI_DMAP == 3 && MI_BDN - MI_VEL == 2 && MI_ACCEL == MI_BDN + 1 && MS_FIRST[MS_MIDI] - MS_FIRST[MS_PLAY] == 4 &&
+          MI_DRESET - MI_DMAP == 3 && MI_BDN - MI_VEL == 2 && MI_ACCEL == MI_BDN + 1 && MS_FIRST[MS_FADERS] - MS_FIRST[MS_PLAY] == 4 &&
+          MS_FIRST[MS_FADERS] == MI_FBS && MI_OWHL == MI_FBS + 1 && MS_FIRST[MS_MIDI] - MS_FIRST[MS_FADERS] == 2 &&
           MI_KLAY == MI_ZOOM + 1 && MI_LIMIT - MS_FIRST[MS_AUDIO] == 3,
           "PLAY: KEY VELOCITY, BEND UP, BEND DOWN, KNOB ACCEL (2.7); MIDI: TRS, MODE, CHANNEL, LOCAL; DAW: 4; KNOB LAYOUT, LIMITER on their knobs");
     for (i = 0; i < MS_COUNT; i++)
@@ -229,6 +230,21 @@ int main(int argc, char **argv)
             check(0, "a section of 1..4 rows");
     check(!strcmp(MI_NAME[MI_MODE], "MODE") && !strcmp(MI_NAME[MI_DCH], "CHANNEL") && !strcmp(MI_NAME[MI_LOCAL], "LOCAL") &&
           !strcmp(MI_NAME[MI_DMAP], "CC MAP") && !strcmp(MI_NAME[MI_VEL], "KEY VELOCITY"), "the rows' names");
+    check(!strcmp(MI_NAME[MI_FBS], "FADER SCREEN") && !strcmp(MI_NAME[MI_OWHL], "ORGAN WHEEL"), "FADERS: its rows' names");
+    {
+        uint16_t c;
+        fb_screen = 0;
+        mi_set(MI_FBS, 1);
+        check(fb_screen == 1 && !strcmp(mi_value(MI_FBS, &c), "10 S"), "FADER SCREEN: right 10 S");
+        mi_set(MI_FBS, 1); mi_set(MI_FBS, 1);
+        check(fb_screen == 2 && !strcmp(mi_value(MI_FBS, &c), "HOLD"), "FADER SCREEN: stops at HOLD");
+        mi_set(MI_FBS, 0);
+        check(fb_screen == 0, "FADER SCREEN: OCT+ steps round to 4 S");
+        mi_set(MI_OWHL, 1);
+        check(drw_wheel_vib == 1 && !strcmp(mi_value(MI_OWHL, &c), "VIBRATO"), "ORGAN WHEEL: right VIBRATO");
+        mi_set(MI_OWHL, 0);
+        check(drw_wheel_vib == 0 && !strcmp(mi_value(MI_OWHL, &c), "ROTOR"), "ORGAN WHEEL: OCT+ toggles back to ROTOR");
+    }
     mi_set(MI_DCH, 1);
     check(daw_ch == 3, "CHANNEL: right 3");
     for (i = 0; i < 20u; i++) mi_set(MI_DCH, 1);

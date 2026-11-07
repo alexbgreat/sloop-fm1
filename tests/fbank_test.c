@@ -80,6 +80,39 @@ int main(int argc, char **argv)
             check(!memcmp(keep, drw_bars[0], sizeof keep), "organ: the bars back out of a project");
         }
         smk_fbank = 5; ui.force = 1; fb_shot("fbank-organ");
+        {   /* the ROTOR pages' values: through a project's spare bits and back; zeros (older projects): the defaults */
+            int16_t e[8] = {DRW_CUSTOM, 0, 0, 0, 6, 127, 100, 2}, z[8] = {4, 0, 0, 0, 1, 40, 0, 1};
+            static const int16_t W[RT_N] = {13, 92, 5, 127, 50, -64, 150, 0};
+            uint32_t k2, ok = 1;
+            memcpy(drw_rot[0], W, sizeof W);
+            drw_rot_pack(&trk[0], e);
+            check(drw_e_low(0, e[0]) == DRW_CUSTOM && drw_e_low(4, e[4]) == 6 && drw_e_low(5, e[5]) == 127 &&
+                  drw_e_low(6, e[6]) == 100 && drw_e_low(7, e[7]) == 2, "rotor: REG, PERC, CLICK, DRV, ROTR kept under it");
+            for (k2 = 0; k2 < RT_N; k2++)
+                drw_rot[0][k2] = DRW_ROT_DESC[k2].def;
+            drw_rot_unpack(&trk[0], e);
+            for (k2 = 0; k2 < RT_N; k2++)
+                ok &= drw_rot[0][k2] == W[k2];
+            check(ok, "rotor: the eight values back out of a project");
+            drw_rot_unpack(&trk[0], z);
+            for (ok = 1, k2 = 0; k2 < RT_N; k2++)
+                ok &= drw_rot[0][k2] == DRW_ROT_DESC[k2].def;
+            check(ok, "rotor: an older project: the defaults");
+        }
+        {   /* FADER SCREEN: 4 S, 10 S, HOLD; a fader move keeps it up */
+            fb_screen = 0; fb_set(5);
+            fm1_ms += 3000u; fb_touch(); fm1_ms += 3000u; fb_expire();
+            check(fb_shown(), "4 S: a fader move keeps the screen up");
+            fm1_ms += 4500u; fb_expire();
+            check(!fb_shown(), "4 S: closes 4 s after the last move");
+            fb_screen = 1; fb_set(5); fm1_ms += 8000u; fb_expire();
+            check(fb_shown(), "10 S: up after 8 s");
+            fm1_ms += 3000u; fb_expire();
+            check(!fb_shown(), "10 S: closed after 11 s");
+            fb_screen = 2; fb_set(5); fm1_ms += 600000u; fb_expire();
+            check(fb_shown(), "HOLD: up after 10 min");
+            fb_close(); fb_screen = 0;
+        }
     }
     set_engine_of(&trk[0], TRK_DEF[0][0]); trk[0].engine = trk[0].eng_req;
     check(fb_nbanks() == 4u, "not organ: four banks");

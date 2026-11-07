@@ -87,7 +87,7 @@ update mode (UBOOT).
 | OCT− | octave down | drums: ghost hits | OCTAVE− | OCT− |
 | OCT+ | octave up | drums: hard hits | OCTAVE+ | OCT+ |
 | — | — | — | KNOB BANK | pins the pad sound picker open / closes it (lit while pinned or while K4 turns) |
-| — | — | — | FADER BANK | the fader bank screen; pressed again, < > or SELECT: the next bank A→B→C→D (closes after 4 s; lit while up; closes the pad picker) |
+| — | — | — | FADER BANK | the fader bank screen; pressed again, < > or SELECT: the next bank A→B→C→D (A→G in [organ mode](#organ-mode); closes after 4 s by default, HOME menu > FADERS > FADER SCREEN; moving a fader keeps it up; lit while up; closes the pad picker) |
 | — | — | — | KNOB BANK + FADER BANK | the pads on the PLAY screen: DRUM KIT (default) ↔ STEPS (as the stock PAD BANK combo) |
 | — | — | — | < | page back (as SELECT, never tempo); SEQ held or pads on STEPS: step page back; visualiser: style |
 | — | — | — | > | page forward; SEQ held or pads on STEPS: step page forward; visualiser: style |
@@ -115,10 +115,23 @@ selected track's organ:
   it moves, and the faders wait to move again after a track change.
 - Select a track with another engine and the banks go back to A–D (on bank E–G, it returns to A).
 
+**ROTOR pages.** The EDIT family gets two more pages on an organ track, **ROTOR** and **ROTOR 2**, after EDIT 2
+(EDIT pressed again, or SELECT / `<` `>`). They set the rotary speaker; at their defaults it sounds exactly as before.
+
+| Page | Knob 1 | Knob 2 | Knob 3 | Knob 4 |
+|---|---|---|---|---|
+| ROTOR | SLOW: the horn's chorale speed, 0.2–2.0 Hz (0.8) | FAST: the horn's tremolo speed, 3.0–10.0 Hz (6.7) | ACCEL: how fast it changes speed (50 %: horn ~1 s, drum ~4 s; higher is quicker) | DEPTH: the amplitude throb (50 %) |
+| ROTOR 2 | DRUM: the drum's speed, 50–120 % of the horn's (87 %) | BAL: + less drum, − less horn (0) | XOVER: where the horn takes over from the drum, 300–1500 Hz (800 Hz) | DOPL: the Doppler pitch wobble (50 %) |
+
+The rotor settings belong to the track's part (like a cabinet: they stay when you change organ presets) and are kept
+with the project and the autosave, not with user presets.
+
 **MOD wheel = rotor switch**, three positions: bottom **STOP**, middle **SLOW** (chorale), top **FAST** (tremolo).
 The rotors ramp between speeds the way a rotary speaker does: the horn in about 1 s, the drum in about 4 s. The
 setting changes only when the wheel moves into another position, so a preset's rotor speed stays put until you
 touch the wheel. Each change shows ROTOR: STOP / SLOW / FAST briefly. On the organ the mod wheel adds no vibrato.
+HOME menu > FADERS > **ORGAN WHEEL** = VIBRATO gives the mod wheel its usual vibrato on the organ instead (the rotor
+then stays on ROTR, the fader and the knob).
 
 ## Keys and pads
 
@@ -145,7 +158,7 @@ notes, their MIDI out and the drum levels; OCT− / OCT+ held still play ghost /
 
 ## HOME menu: the SMK-37 settings
 
-HOME menu (PATCH held; sections SCREEN, LIGHTS, AUDIO, PLAY, MIDI, DAW, SYSTEM); SELECT walks the sections, the knobs set the rows (K5–K8, or K1–K4 with KNOB LAYOUT = SMK;
+HOME menu (PATCH held; sections SCREEN, LIGHTS, AUDIO, PLAY, FADERS, MIDI, DAW, SYSTEM); SELECT walks the sections, the knobs set the rows (K5–K8, or K1–K4 with KNOB LAYOUT = SMK;
 the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ REC still start / stop and arm:
 
 | Section | Row | Knob | Setting |
@@ -157,6 +170,8 @@ the screen names them), OCT+ steps the row under the cursor; SEQ PLAY and SEQ RE
 | PLAY | BEND UP | K6 | the pitch wheel up, on the internal sounds (the selected synth track): OFF, 1, 2, 3, 4, 5, 7 or 12 semitones, default 7. MIDI IN's pitch bend has its own (GLO > MIDI 2 > BEND) |
 | PLAY | BEND DOWN | K7 | the same, down (default 7; e.g. +2 up, −12 down). The earlier BEND RANGE is read as both |
 | PLAY | KNOB ACCEL | K8 | SLOOP's (SCREEN on the FM-1): ON (default), a fast turn moves further; OFF, one value a detent |
+| FADERS | FADER SCREEN | K5 | how long the FADER BANK screen stays up after the last bank change or fader move: 4 S (default), 10 S, HOLD (until PATCH closes it) |
+| FADERS | ORGAN WHEEL | K6 | ROTOR (default): on an organ track the mod wheel is the rotor's STOP / SLOW / FAST switch; VIBRATO: the usual mod-wheel vibrato |
 | MIDI | TRS MIDI OUT | K5 | ON (default) / OFF. The 3.5 mm jack sends what goes out over USB MIDI: the keys and pads (and the sequencer with GLO > SYSTEM > MIDI = SEQ, or DAW mode), on each track's MIDI channel, with or without a computer. NOT SENDING: the UART did not answer; set it again to retry |
 | MIDI | MODE | K6 | SYNTH (default) / DAW ([DAW mode](#daw-mode); also `<` + `>`) |
 | MIDI | CHANNEL | K7 | 1–16 (default 1): DAW mode's keys and every map entry on MAIN |

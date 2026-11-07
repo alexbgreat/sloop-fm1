@@ -34,7 +34,8 @@
  * per-voice phases / gains (drw_vc) live here, indexed by part and voice; voice_t is unused. */
 #define DRW_NP 9                 /* partials */
 #define DRW_FOLD 584366000u      /* ~6 kHz as a phase increment: partials above fold down an octave */
-#define DRW_XOVER 77915000u      /* ~800 Hz: below the low rotor, above the high rotor */
+#define DRW_XOVER 77915000u      /* ~800 Hz: below the low rotor, above the high rotor (ROTOR 2 > XOVER's default) */
+#define DRW_XOVER10 973937u      /* 10 Hz as a phase increment */
 
 /* drawbar level 0..8 -> Q15, 3 dB a step */
 static const uint16_t DRW_LV[9] = {0, 2920, 4125, 5827, 8231, 11627, 16423, 23198, 32767};
@@ -46,6 +47,29 @@ static const char *const N_DRW_REG[] = {"FLUTE", "MELLO", "HOLLW", "SMOOT", "3BA
  * TOP still add to them. A project keeps them packed into E1..E3 (project.c drw_pack / drw_unpack) */
 #define DRW_CUSTOM 16
 static uint8_t drw_bars[NPART][DRW_NP];
+
+/* The ROTOR pages (EDIT, DRAWBAR only: params.c SC_ROTOR): the rotary speaker's own settings, per part, kept with the
+ * project in E0 and E4..E7's spare bits (drw_rot_pack). Each at its default sounds exactly as before they existed.
+ *   SLOW, FAST  the horn's speeds (0.1 Hz)        ACCEL  how fast the rotors change speed (64: horn ~1 s, drum ~4 s)
+ *   DEPTH       the amplitude modulation          DRUM   the drum's speed, % of the horn's
+ *   BAL         horn (+) / drum (-) level         XOVER  where the horn takes over from the drum (10 Hz)
+ *   DOPL        the Doppler pitch modulation */
+enum { RT_SLOW, RT_FAST, RT_ACCEL, RT_DEPTH, RT_DRUM, RT_BAL, RT_XOVER, RT_DOPL, RT_N };
+static const param_desc_t DRW_ROT_DESC[RT_N] = {
+    {"SLOW", F_HZD10, 2, 20, 8, 0, 0},
+    {"FAST", F_HZD10, 30, 100, 67, 0, 0},
+    {"ACCEL", F_PCT, 0, 127, 64, 0, 0},
+    {"DEPTH", F_PCT, 0, 127, 64, 0, 0},
+    {"DRUM", F_INT, 50, 120, 87, 0, "%"},
+    {"BAL", F_BIPCT, -64, 63, 0, 0, 0},
+    {"XOVER", F_HZX10, 30, 150, 80, 0, 0},
+    {"DOPL", F_PCT, 0, 127, 64, 0, 0},
+};
+static const uint8_t DRW_ROT_BITS[RT_N] = {5, 7, 7, 7, 7, 7, 7, 7};   /* (54 bits in a project) */
+static int16_t drw_rot[NPART][RT_N] = {
+    {8, 67, 64, 64, 87, 0, 80, 64}, {8, 67, 64, 64, 87, 0, 80, 64}, {8, 67, 64, 64, 87, 0, 80, 64}};
+static uint8_t drw_wheel_vib;    /* SMK-37 HOME menu > FADERS > ORGAN WHEEL: 0 ROTOR (the mod wheel is the rotor switch),
+                                  * 1 VIBRATO (as on the other engines) */
 static const char DRW_REG[16][DRW_NP + 1] = {
     "008000000", /* FLUTE  one soft flute */
     "008400000", /* MELLO  flute and octave */
@@ -106,6 +130,7 @@ typedef struct {                 /* per part, once per block (drawbar_block) */
     int32_t rwet;                /* rotary amount, Q15 (ramps on / off) */
     int32_t am[2];               /* this block's amplitude, Q15, per rotor */
     int32_t fm[2];               /* this block's pitch offset, Q16 of the increment, per rotor */
+    uint32_t xover;              /* the crossover as a phase increment (ROTOR 2 > XOVER) */
 } drw_trk_t;
 
 typedef struct {                 /* per voice */
@@ -156,6 +181,53 @@ static void drw_bar_set(track_t *t, uint32_t k, uint32_t v)
     }
     drw_bars[pi][k] = (uint8_t)clamp((int32_t)(v > 8u ? 8u : v) - t->p[drw_grp(k)], 0, 8);
 }
+/* a project: the ROTOR values, each (value - min) ^ (default - min) (0: the default, as in older projects), in a 54-bit
+ * stream over the spare bits of E0 (bits 5..15), E4 (3..15), E5 (7..15), E6 (7..15), E7 (2..15). The low bits stay
+ * REG, PERC, CLICK, DRV, ROTR (drw_e_low takes them back out before the range check) */
+static const uint8_t DRW_RSLOT[5] = {0, 4, 5, 6, 7}, DRW_RLOW[5] = {5, 3, 7, 7, 2};
+static int32_t drw_e_low(uint32_t e, int32_t v)       /* E0..E7 of a stored DRAWBAR track -> the value alone */
+{
+    uint32_t i;
+    for (i = 0; i < 5u; i++)
+        if (DRW_RSLOT[i] == e)
+            return (int32_t)((uint32_t)(uint16_t)v & ((1u << DRW_RLOW[i]) - 1u));
+    return v;
+}
+static void drw_rot_pack(const track_t *t, int16_t *e)      /* e: the stored E0..E7, their low bits already in */
+{
+    const int16_t *r = drw_rot[(uint32_t)(t - trk) % NPART];
+    uint64_t w = 0;
+    uint32_t k, sh = 0;
+    for (k = 0; k < RT_N; k++) {
+        const param_desc_t *d = &DRW_ROT_DESC[k];
+        w |= (uint64_t)(((uint32_t)(clamp(r[k], d->min, d->max) - d->min) ^ (uint32_t)(d->def - d->min)) &
+                        ((1u << DRW_ROT_BITS[k]) - 1u)) << sh;
+        sh += DRW_ROT_BITS[k];
+    }
+    for (k = 0; k < 5u; k++) {
+        uint32_t lo = DRW_RLOW[k], n = 16u - lo, s = (uint32_t)DRW_RSLOT[k];
+        e[s] = (int16_t)(uint16_t)(((uint32_t)(uint16_t)e[s] & ((1u << lo) - 1u)) | (uint32_t)(w & ((1u << n) - 1u)) << lo);
+        w >>= n;
+    }
+}
+static void drw_rot_unpack(track_t *t, const int16_t *e)
+{
+    int16_t *r = drw_rot[(uint32_t)(t - trk) % NPART];
+    uint64_t w = 0;
+    uint32_t k, sh = 0;
+    for (k = 0; k < 5u; k++) {
+        uint32_t lo = DRW_RLOW[k], n = 16u - lo;
+        w |= (uint64_t)((uint32_t)(uint16_t)e[DRW_RSLOT[k]] >> lo) << sh;
+        sh += n;
+    }
+    for (k = 0; k < RT_N; k++) {
+        const param_desc_t *d = &DRW_ROT_DESC[k];
+        uint32_t f = (uint32_t)w & ((1u << DRW_ROT_BITS[k]) - 1u);
+        r[k] = (int16_t)clamp(d->min + (int32_t)(f ^ (uint32_t)(d->def - d->min)), d->min, d->max);
+        w >>= DRW_ROT_BITS[k];
+    }
+}
+
 /* a project's E1..E3 with CUSTM: each its offset (5 bits) | three bars in base 9 << 5 */
 static int16_t drw_pack(const track_t *t, uint32_t g)
 {
@@ -199,17 +271,35 @@ static void drawbar_block(track_t *t)
     } else {
         T->dg = 0;
     }
-    /* rotors: each speed eases to its target (high rotor tau ~0.37 s, low ~1.5 s) */
-    for (k = 0; k < 2u; k++) {
-        int32_t sp, c, sn, dep;
-        T->rsp[k] += (DRW_ROT_SPD[k][rot] - T->rsp[k]) >> (k ? 11 : 9);
-        sp = T->rsp[k];
-        T->rph[k] += (uint32_t)sp;
-        sn = sine_i(T->rph[k]);
-        c = sine_i(T->rph[k] + 0x40000000u);
-        dep = k ? 7000 : 13000;                         /* AM depth: low rotor 21 %, high 40 % */
-        T->am[k] = 32767 - mulq15(dep, (32767 - c) >> 1);
-        T->fm[k] = (sn * (sp >> (k ? 17 : 16))) >> 15;  /* Doppler: +-0.5 % fast (high), +-0.2 % (low) */
+    /* rotors: each speed eases to its target (high rotor tau ~0.37 s, low ~1.5 s at ACCEL 64); the ROTOR pages'
+     * values at their defaults give exactly the table's speeds and the depths as before */
+    {
+        const int16_t *r = drw_rot[(uint32_t)(t - trk) % NPART];
+        int32_t tgt[2] = {0, 0}, acc = r[RT_ACCEL] < 4 ? 4 : r[RT_ACCEL];
+        if (rot) {
+            uint32_t ri = rot == 1u ? RT_SLOW : RT_FAST;
+            int32_t hv = r[ri], std = hv == DRW_ROT_DESC[ri].def;
+            tgt[0] = std ? DRW_ROT_SPD[0][rot] : hv * DRW_HZ(0.1);
+            tgt[1] = std && r[RT_DRUM] == 87 ? DRW_ROT_SPD[1][rot] : tgt[0] / 100 * r[RT_DRUM];
+        }
+        for (k = 0; k < 2u; k++) {
+            int32_t sp, c, sn, dep;
+            T->rsp[k] += (((tgt[k] - T->rsp[k]) >> (k ? 11 : 9)) * acc) >> 6;
+            sp = T->rsp[k];
+            T->rph[k] += (uint32_t)sp;
+            sn = sine_i(T->rph[k]);
+            c = sine_i(T->rph[k] + 0x40000000u);
+            dep = ((k ? 7000 : 13000) * r[RT_DEPTH]) >> 6;   /* AM depth: low rotor 21 %, high 40 % (DEPTH 64) */
+            T->am[k] = 32767 - mulq15(dep, (32767 - c) >> 1);
+            T->fm[k] = (sn * (sp >> (k ? 17 : 16))) >> 15;  /* Doppler: +-0.5 % fast (high), +-0.2 % (low) */
+            if (r[RT_DOPL] != 64)
+                T->fm[k] = (T->fm[k] * r[RT_DOPL]) >> 6;
+        }
+        if (r[RT_BAL] > 0)                              /* BAL: + the drum quieter, - the horn quieter */
+            T->am[1] = mulq15(T->am[1], 32767 - r[RT_BAL] * 511);
+        else if (r[RT_BAL] < 0)
+            T->am[0] = mulq15(T->am[0], 32767 + r[RT_BAL] * 511);
+        T->xover = r[RT_XOVER] == 80 ? DRW_XOVER : (uint32_t)r[RT_XOVER] * DRW_XOVER10;
     }
     T->rwet += ((rot ? 32767 : 0) - T->rwet) >> 5;      /* ~25 ms in or out */
     for (k = 0; k < 2u; k++) {
@@ -257,7 +347,7 @@ static void drawbar_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
         while (x > DRW_FOLD_LIM[k])                     /* fold back above ~6 kHz */
             x >>= 1;
         inc = drw_ratio(k, x);
-        r = inc < DRW_XOVER;                            /* 1: the low rotor */
+        r = inc < T->xover;                             /* 1: the low rotor */
         g1 = mulq15(g1, T->am[r]);
         inc += (uint32_t)((int32_t)(inc >> 16) * T->fm[r]);
         V->gp[k] = g1;

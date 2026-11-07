@@ -999,6 +999,7 @@ static int fb_left(void);
 static void fb_set(uint32_t b);
 static void fb_close(void);
 static void fb_expire(void);
+static uint8_t fb_screen;                       /* ui_fbank.c: HOME menu > FADERS > FADER SCREEN */
 static int daw_screen(void);                    /* ui_daw.c: DAW mode */
 static void daw_switch(uint32_t *pressed);
 static void daw_input(uint32_t pressed, uint32_t now);

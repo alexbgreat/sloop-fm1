@@ -36,6 +36,8 @@ enum { MI_COLOR, MI_ZOOM,
        MI_LIMIT,                                   /* SMK-37: AUDIO > LIMITER (fx.c lim_classic) */
        MI_VEL, MI_BUP, MI_BDN, MI_ACCEL,           /* SMK-37: PLAY > KEY VELOCITY (smk_vel.h), BEND UP, BEND DOWN (smk_wheel.h),
                                                     * KNOB ACCEL (SLOOP's, here) */
+       MI_FBS, MI_OWHL,                            /* SMK-37: FADERS > FADER SCREEN (ui_fbank.c), ORGAN WHEEL (eng_drawbar.c
+                                                    * drw_wheel_vib) */
        MI_TRS, MI_MODE, MI_DCH, MI_LOCAL,          /* SMK-37: MIDI > TRS MIDI OUT (smk_midi_out.h), MODE, CHANNEL, LOCAL
                                                     * (smk_daw.h) */
        MI_DMAP, MI_KREL, MI_DEDIT, MI_DRESET,      /* SMK-37: DAW > CC MAP, KNOBS, EDIT MAP, RESET MAP (ui_daw.c) */
@@ -65,19 +67,27 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "USB RATE",
 #endif
 #if BOARD_SMK37
-                                              "LIMITER", "KEY VELOCITY", "BEND UP", "BEND DOWN", "KNOB ACCEL", "TRS MIDI OUT",
+                                              "LIMITER", "KEY VELOCITY", "BEND UP", "BEND DOWN", "KNOB ACCEL",
+                                              "FADER SCREEN", "ORGAN WHEEL", "TRS MIDI OUT",
                                               "MODE", "CHANNEL", "LOCAL", "CC MAP", "KNOBS", "EDIT MAP", "RESET MAP",
 #endif
                                               "2ND CORE", "HARDWARE CALIBRATION", "MIDI LEARN CLEAR", "ABOUT"};
 #define MI_SYS0 MI_CPU1
+#if BOARD_SMK37
+#define FBS_N 3u                                   /* FADER SCREEN (ui_fbank.c fb_expire): 4 S, 10 S, HOLD */
+static const char *const FBS_NAME[FBS_N] = {"4 S", "10 S", "HOLD"};
+static uint8_t fb_screen;                          /* (ui_fbank.c) */
+#endif
 #if SNOOP37
 static const char *const BOOT_NAME[BOOT_N] = {"SNOOP37", "SLOOP", "NONE"};
 #endif
 #if BOARD_SMK37
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_PLAY, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
-static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "PLAY", "MIDI", "DAW", "SYSTEM"};
-static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_VEL, MI_TRS, MI_DMAP, MI_SYS0, MI_COUNT};
-_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LOWCUT - MI_LIGHTS <= 4 && MI_VEL - MI_LOWCUT <= 4 && MI_TRS - MI_VEL <= 4 && MI_COUNT - MI_SYS0 <= 4,
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_PLAY, MS_FADERS, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "PLAY", "FADERS", "MIDI", "DAW", "SYSTEM"};
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_VEL, MI_FBS, MI_TRS, MI_DMAP, MI_SYS0,
+                                               MI_COUNT};
+_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LOWCUT - MI_LIGHTS <= 4 && MI_VEL - MI_LOWCUT <= 4 && MI_FBS - MI_VEL <= 4 &&
+               MI_TRS - MI_FBS <= 4 && MI_COUNT - MI_SYS0 <= 4,
                "SMK-37: four rows a section (K5..K8)");
 #define MS_GAP 10                                  /* (seven tabs: those around this one that fit, menu_tabs) */
 #else
@@ -156,6 +166,8 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         return trs_out ? "ON" : "OFF";
     case MI_KLAY: return knob_layout ? "SMK" : "FM-1";
     case MI_PADL: return PADL_NAME[pad_light % PADL_N];
+    case MI_FBS: return FBS_NAME[fb_screen % FBS_N];
+    case MI_OWHL: return drw_wheel_vib ? "VIBRATO" : "ROTOR";
     case MI_MODE: return daw_on ? "DAW" : "SYNTH";
     case MI_DCH: {
         static char b[4];
@@ -228,7 +240,8 @@ UI_SMALL static void draw_menu(void)
 #endif
 #if BOARD_SMK37
     sig += vel_mode * 179424673u + trs_out * 373587883u + smo.dead * 573259391u + bend_up * 817504243u +
-           bend_dn * 941083987u + lim_classic * 1500450271u + knob_layout * 2147483647u + pad_light * 1000033u;
+           bend_dn * 941083987u + lim_classic * 1500450271u + knob_layout * 2147483647u + pad_light * 1000033u +
+           fb_screen * 1000081u + drw_wheel_vib * 1000099u;
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
 #endif
@@ -460,6 +473,18 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
             pad_light++;
         else if (!s)
             pad_light = (uint8_t)((pad_light + 1u) % PADL_N);
+        break;
+    case MI_FBS:                                       /* right longer, left shorter (stops at the ends); OCT+ steps round
+                                                        * 4 S, 10 S, HOLD */
+        if (s > 0 && fb_screen + 1u < FBS_N)
+            fb_screen++;
+        else if (s < 0 && fb_screen > 0u)
+            fb_screen--;
+        else if (!s)
+            fb_screen = (uint8_t)((fb_screen + 1u) % FBS_N);
+        break;
+    case MI_OWHL:                                      /* right VIBRATO, left ROTOR; OCT+ toggles */
+        drw_wheel_vib = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !drw_wheel_vib);
         break;
     case MI_KLAY:                                      /* right SMK, left FM-1; OCT+ toggles. The rows' knobs move with it */
         knob_layout = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !knob_layout);
