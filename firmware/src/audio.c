@@ -25,12 +25,89 @@ static volatile uint32_t t5_nested_ticks;              /* TIMER4 ticks TIMER5 sp
 static int16_t scope_buf[SCOPE_N], scope_bufr[SCOPE_N];   /* left, right (the visualiser): the mix at full level */
 static uint32_t scope_w;
 
+#if FELUCCA_UAC_OUT
+/* the USB audio output (usb.c): the host's frames at the I2S clock. spk_half, when a render starts, steers the
+ * resampler's step (Q16) from the ring's fill (PI, filtered: the fill there is past the render's saw tooth, the
+ * packets' 44 / 45 frames and the poll's phase remain); spk_mix adds the stream to the master (after the USB input's
+ * tap: the computer does not record its own sound), at the MASTER knob's level */
+static uint32_t spk_frac, spk_step = 65536u, spk_gain;
+static int32_t spk_ef, spk_int;
+static uint8_t spk_go;
+static void spk_half(void)
+{
+    uint32_t w = spk_w, fill = w - spk_r, need;
+    int32_t st;
+    if (!spk_alt || fill > SPK_N) {                     /* no stream: the ring follows the host's writes */
+        spk_r = w;
+        spk_go = 0;
+        return;
+    }
+    if (fill > SPK_N - HALF_FRAMES - SPK_MAXP / 4u) {   /* too far behind: back to the target */
+        spk_r = w - SPK_TGT;
+        fill = SPK_TGT;
+    }
+    if (!spk_go) {
+        if (fill < SPK_TGT)
+            return;                                     /* priming */
+        spk_go = 1;
+        spk_gain = 0;
+        spk_frac = 0;
+        spk_ef = 0;
+    }
+    need = ((HALF_FRAMES * spk_step) >> 16) + 2u;
+    if (fill < need) {                                  /* the host stopped (or fell behind): prime again */
+        spk_go = 0;
+        return;
+    }
+    spk_ef += (((int32_t)fill - (int32_t)SPK_TGT) * 16 - spk_ef) >> 5;   /* Q4, ~190 ms */
+    spk_int += spk_ef >> 4;
+    if (spk_int > (1 << 20))
+        spk_int = 1 << 20;
+    if (spk_int < -(1 << 20))
+        spk_int = -(1 << 20);
+    st = 65536 + (spk_ef >> 4) + (spk_int >> 10);
+    if (st > 65536 + 1311)
+        st = 65536 + 1311;                              /* +-2 % */
+    if (st < 65536 - 1311)
+        st = 65536 - 1311;
+    spk_step = (uint32_t)st;
+}
+static void spk_mix(int32_t *out, uint32_t n)
+{
+    uint32_t i, r, f, g, m;
+    if (!spk_go)
+        return;
+    r = spk_r, f = spk_frac, g = spk_gain;
+    m = song.master_q12 > 4096u ? 4096u : song.master_q12;
+    for (i = 0; i < n; i++) {
+        uint32_t a = spk_ring[r & (SPK_N - 1u)], b = spk_ring[(r + 1u) & (SPK_N - 1u)];
+        int32_t fl = (int32_t)(f >> 1), k, l = (int16_t)a, rr = (int16_t)(a >> 16), v;
+        l += ((int32_t)(int16_t)b - l) * fl >> 15;
+        rr += ((int32_t)(int16_t)(b >> 16) - rr) * fl >> 15;
+        if (g < 4096u)
+            g++;                                        /* ~90 ms fade in */
+        k = (int32_t)((m * g) >> 12);
+        v = out[2u * i] + ((l * k) >> 12);
+        out[2u * i] = v > 32767 ? 32767 : v < -32767 ? -32767 : v;
+        v = out[2u * i + 1u] + ((rr * k) >> 12);
+        out[2u * i + 1u] = v > 32767 ? 32767 : v < -32767 ? -32767 : v;
+        f += spk_step;
+        r += f >> 16;
+        f &= 0xFFFFu;
+    }
+    spk_r = r, spk_frac = f, spk_gain = g;
+}
+#endif
+
 static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 -> 24 bit */
 {
     uint32_t i;
     mix_block(out, n);
 #if FELUCCA_UAC
     uac_tap(usb_full_now ? usb_out : out, n);           /* the USB audio input: the master output, or at full level */
+#endif
+#if FELUCCA_UAC_OUT
+    spk_mix(out, n);                                    /* the USB audio output: the computer's sound */
 #endif
     for (i = 0; i < n; i++) {
         if (i & 1u)
@@ -66,6 +143,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #if FELUCCA_UAC
         uac_render_start();
         usb_full_now = (uint8_t)(usb_full && uac.feed);  /* menu USB AUDIO = FULL, while the computer records */
+#if FELUCCA_UAC_OUT
+        spk_half();
+#endif
 #endif
         for (b = 0; b < HALF_FRAMES; b += CTL)
             audio_block(o + 2u * b, CTL);
