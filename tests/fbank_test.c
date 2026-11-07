@@ -82,7 +82,8 @@ int main(int argc, char **argv)
         smk_fbank = 5; ui.force = 1; fb_shot("fbank-organ");
         {   /* the ROTOR pages' values: through a project's spare bits and back; zeros (older projects): the defaults */
             int16_t e[8] = {DRW_CUSTOM, 0, 0, 0, 6, 127, 100, 2}, z[8] = {4, 0, 0, 0, 1, 40, 0, 1};
-            static const int16_t W[RT_N] = {13, 92, 5, 127, 50, -64, 150, 0};
+            static const int16_t W[RT_N] = {13, 92, 5, 127, 50, -64, 150, 0, 27};
+            e[1] = drw_pack(&trk[0], 0), e[2] = drw_pack(&trk[0], 1), e[3] = drw_pack(&trk[0], 2);
             uint32_t k2, ok = 1;
             memcpy(drw_rot[0], W, sizeof W);
             drw_rot_pack(&trk[0], e);
@@ -93,7 +94,9 @@ int main(int argc, char **argv)
             drw_rot_unpack(&trk[0], e);
             for (k2 = 0; k2 < RT_N; k2++)
                 ok &= drw_rot[0][k2] == W[k2];
-            check(ok, "rotor: the eight values back out of a project");
+            check(ok, "rotor: the nine values (DRAG too) back out of a project");
+            check(drw_unpack(&trk[0], 0, e[1]) == trk[0].p[P_E1] && drw_unpack(&trk[0], 2, e[3]) == trk[0].p[P_E3],
+                  "rotor: DRAG's bits leave SUB / TOP and the bars alone");
             drw_rot_unpack(&trk[0], z);
             for (ok = 1, k2 = 0; k2 < RT_N; k2++)
                 ok &= drw_rot[0][k2] == DRW_ROT_DESC[k2].def;

@@ -421,6 +421,7 @@ static const page_t PAGES[] = {
     {"EDIT 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_E7}},
     {"ROTOR", FAM_EDIT, SC_ROTOR, GR_NONE, {RT_SLOW, RT_FAST, RT_ACCEL, RT_DEPTH}},   /* DRAWBAR only (page_shown): */
     {"ROTOR 2", FAM_EDIT, SC_ROTOR, GR_NONE, {RT_DRUM, RT_BAL, RT_XOVER, RT_DOPL}},  /* the rotary speaker */
+    {"ROTOR 3", FAM_EDIT, SC_ROTOR, GR_NONE, {RT_DRAG, 0xFF, 0xFF, 0xFF}},           /* (its brake) */
     {"FILTER", FAM_EDIT, SC_TRACK, GR_NONE, {P_FTYPE, P_E4, P_E5, P_E7}},   /* ANALOG only (2.6, Felucca 1.5): TYPE CUT
                                                                           * RES KTR (page_shown) */
     {"VOICE", FAM_EDIT, SC_TRACK, GR_NONE, {P_VOICE, P_GLIDE, P_GLMODE, P_PRIO}},

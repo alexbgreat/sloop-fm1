@@ -122,11 +122,14 @@ selected track's organ:
 |---|---|---|---|---|
 | ROTOR | SLOW: the horn's chorale speed, 0.2–2.0 Hz (0.8) | FAST: the horn's tremolo speed, 3.0–10.0 Hz (6.7) | ACCEL: how fast it changes speed (50 %: horn ~1 s, drum ~4 s; higher is quicker) | DEPTH: the amplitude throb (50 %) |
 | ROTOR 2 | DRUM: the drum's speed, 50–120 % of the horn's (87 %) | BAL: + less drum, − less horn (0) | XOVER: where the horn takes over from the drum, 300–1500 Hz (800 Hz) | DOPL: the Doppler pitch wobble (50 %) |
+| ROTOR 3 | DRAG: the brake, how fast STOP winds the rotors down: 0 % nearly free-running (the drum coasts for minutes), 100 % a hard brake (48 %: the horn ~2 s, the drum ~7 s) | | | |
 
 The rotor settings belong to the track's part (like a cabinet: they stay when you change organ presets) and are kept
 with the project and the autosave, not with user presets.
 
 **MOD wheel = rotor switch**, three positions: bottom **STOP**, middle **SLOW** (chorale), top **FAST** (tremolo).
+On STOP the rotors coast down at ROTOR 3 > DRAG's rate, the rotary sound with them, and the effect goes once both
+stand still.
 The rotors ramp between speeds the way a rotary speaker does: the horn in about 1 s, the drum in about 4 s. The
 setting changes only when the wheel moves into another position, so a preset's rotor speed stays put until you
 touch the wheel. Each change shows ROTOR: STOP / SLOW / FAST briefly. On the organ the mod wheel adds no vibrato.

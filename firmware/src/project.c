@@ -477,8 +477,8 @@ UI_SMALL static void proj_capture(project_t *p)        /* what is playing now, a
         for (k = 0; k < NSTEP; k++)
             pt_set_mf(&p->t[i], k, trk[i].micro[k], (uint32_t)trk[i].fill[k / 4u] >> (2u * (k % 4u)));
         memcpy(p->t[i].lock, trk[i].lock, sizeof trk[i].lock);
-        if (i < NPART && trk[i].eng_req == ENGI_DRAWBAR && trk[i].p[P_E0] == DRW_CUSTOM)
-            for (k = 0; k < 3u; k++)                    /* DRAWBAR's REG CUSTM: its nine bars in E1..E3 */
+        if (i < NPART && trk[i].eng_req == ENGI_DRAWBAR)
+            for (k = 0; k < 3u; k++)                    /* DRAWBAR: SUB BODY TOP and REG CUSTM's nine bars in E1..E3 */
                 p->t[i].e[1u + k] = drw_pack(&trk[i], k);
         if (i < NPART && trk[i].eng_req == ENGI_DRAWBAR)
             drw_rot_pack(&trk[i], p->t[i].e);           /* and the ROTOR pages, in E0 and E4..E7's spare bits */
@@ -519,8 +519,8 @@ static void proj_apply(const project_t *p, int all)
         }
         if (k < NPART && e == ENGI_DRAWBAR)
             drw_rot_unpack(t, s->e);
-        if (k < NPART && e == ENGI_DRAWBAR && t->p[P_E0] == DRW_CUSTOM)
-            for (i = 0; i < 3u; i++)                    /* DRAWBAR's REG CUSTM: the bars out of E1..E3 */
+        if (k < NPART && e == ENGI_DRAWBAR)
+            for (i = 0; i < 3u; i++)                    /* DRAWBAR: SUB BODY TOP (and REG CUSTM's bars) out of E1..E3 */
                 t->p[P_E1 + i] = (int16_t)clamp(drw_unpack(t, i, s->e[1u + i]), -8, 8);
         if (!(p->rsv[0] & 0x40u) && !t->p[P_AMODE])
             t->p[P_AHOLD] = 0;                          /* (2.7) saved before 2.7: HOLD with the arp OFF did nothing then; it

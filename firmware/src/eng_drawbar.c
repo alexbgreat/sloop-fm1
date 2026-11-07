@@ -53,8 +53,9 @@ static uint8_t drw_bars[NPART][DRW_NP];
  *   SLOW, FAST  the horn's speeds (0.1 Hz)        ACCEL  how fast the rotors change speed (64: horn ~1 s, drum ~4 s)
  *   DEPTH       the amplitude modulation          DRUM   the drum's speed, % of the horn's
  *   BAL         horn (+) / drum (-) level         XOVER  where the horn takes over from the drum (10 Hz)
- *   DOPL        the Doppler pitch modulation */
-enum { RT_SLOW, RT_FAST, RT_ACCEL, RT_DEPTH, RT_DRUM, RT_BAL, RT_XOVER, RT_DOPL, RT_N };
+ *   DOPL        the Doppler pitch modulation      DRAG   (ROTOR 3) the brake: how fast STOP winds the rotors down
+ *                                                        (0 nearly free-running .. 31 a hard brake; 15: as ACCEL 64) */
+enum { RT_SLOW, RT_FAST, RT_ACCEL, RT_DEPTH, RT_DRUM, RT_BAL, RT_XOVER, RT_DOPL, RT_DRAG, RT_N };
 static const param_desc_t DRW_ROT_DESC[RT_N] = {
     {"SLOW", F_HZD10, 2, 20, 8, 0, 0},
     {"FAST", F_HZD10, 30, 100, 67, 0, 0},
@@ -64,10 +65,11 @@ static const param_desc_t DRW_ROT_DESC[RT_N] = {
     {"BAL", F_BIPCT, -64, 63, 0, 0, 0},
     {"XOVER", F_HZX10, 30, 150, 80, 0, 0},
     {"DOPL", F_PCT, 0, 127, 64, 0, 0},
+    {"DRAG", F_PCT, 0, 31, 15, 0, 0},
 };
-static const uint8_t DRW_ROT_BITS[RT_N] = {5, 7, 7, 7, 7, 7, 7, 7};   /* (54 bits in a project) */
+static const uint8_t DRW_ROT_BITS[RT_N] = {5, 7, 7, 7, 7, 7, 7, 7, 5};   /* (59 bits in a project) */
 static int16_t drw_rot[NPART][RT_N] = {
-    {8, 67, 64, 64, 87, 0, 80, 64}, {8, 67, 64, 64, 87, 0, 80, 64}, {8, 67, 64, 64, 87, 0, 80, 64}};
+    {8, 67, 64, 64, 87, 0, 80, 64, 15}, {8, 67, 64, 64, 87, 0, 80, 64, 15}, {8, 67, 64, 64, 87, 0, 80, 64, 15}};
 static uint8_t drw_wheel_vib;    /* SMK-37 HOME menu > FADERS > ORGAN WHEEL: 0 ROTOR (the mod wheel is the rotor switch),
                                   * 1 VIBRATO (as on the other engines) */
 static const char DRW_REG[16][DRW_NP + 1] = {
@@ -184,7 +186,8 @@ static void drw_bar_set(track_t *t, uint32_t k, uint32_t v)
 /* a project: the ROTOR values, each (value - min) ^ (default - min) (0: the default, as in older projects), in a 54-bit
  * stream over the spare bits of E0 (bits 5..15), E4 (3..15), E5 (7..15), E6 (7..15), E7 (2..15). The low bits stay
  * REG, PERC, CLICK, DRV, ROTR (drw_e_low takes them back out before the range check) */
-static const uint8_t DRW_RSLOT[5] = {0, 4, 5, 6, 7}, DRW_RLOW[5] = {5, 3, 7, 7, 2};
+/* (then bit 15 of E1, E2, E3: a DRAWBAR track keeps them as offset | bars << 5 (drw_pack), bit 15 free) */
+static const uint8_t DRW_RSLOT[8] = {0, 4, 5, 6, 7, 1, 2, 3}, DRW_RLOW[8] = {5, 3, 7, 7, 2, 15, 15, 15};
 static int32_t drw_e_low(uint32_t e, int32_t v)       /* E0..E7 of a stored DRAWBAR track -> the value alone */
 {
     uint32_t i;
@@ -231,7 +234,7 @@ static int16_t drw_pack(const track_t *t, uint32_t g)
 static int16_t drw_unpack(track_t *t, uint32_t g, int16_t e)
 {
     uint8_t *b = drw_bars[(uint32_t)(t - trk) % NPART] + 3u * g;
-    uint32_t w = ((uint32_t)(uint16_t)e >> 5) % 729u;
+    uint32_t w = (((uint32_t)(uint16_t)e >> 5) & 1023u) % 729u;   /* (bit 15: the ROTOR values') */
     b[0] = (uint8_t)(w % 9u), b[1] = (uint8_t)(w / 9u % 9u), b[2] = (uint8_t)(w / 81u);
     return (int16_t)((int32_t)((e & 31) ^ 16) - 16);       /* the offset, sign-extended */
 }
@@ -270,6 +273,8 @@ static void drawbar_block(track_t *t)
     {
         const int16_t *r = drw_rot[(uint32_t)(t - trk) % NPART];
         int32_t tgt[2] = {0, 0}, acc = r[RT_ACCEL] < 4 ? 4 : r[RT_ACCEL];
+        if (!rot)                                       /* STOP: the brake, DRAG 0..31 -> 1..256 (15: 64, as ACCEL's) */
+            acc = ((r[RT_DRAG] + 1) * (r[RT_DRAG] + 1)) >> 2 | 1;
         if (rot) {
             uint32_t ri = rot == 1u ? RT_SLOW : RT_FAST;
             int32_t hv = r[ri], std = hv == DRW_ROT_DESC[ri].def;
@@ -279,6 +284,8 @@ static void drawbar_block(track_t *t)
         for (k = 0; k < 2u; k++) {
             int32_t sp, c, sn, dep;
             T->rsp[k] += (((tgt[k] - T->rsp[k]) >> (k ? 11 : 9)) * acc) >> 6;
+            if (!rot && T->rsp[k] < DRW_HZ(0.05) && T->rsp[k] > -DRW_HZ(0.05))
+                T->rsp[k] = 0;                          /* (braked to a standstill) */
             sp = T->rsp[k];
             T->rph[k] += (uint32_t)sp;
             sn = sine_i(T->rph[k]);
@@ -295,7 +302,8 @@ static void drawbar_block(track_t *t)
             T->am[0] = mulq15(T->am[0], 32767 + r[RT_BAL] * 511);
         T->xover = r[RT_XOVER] == 80 ? DRW_XOVER : (uint32_t)r[RT_XOVER] * DRW_XOVER10;
     }
-    T->rwet += ((rot ? 32767 : 0) - T->rwet) >> 5;      /* ~25 ms in or out */
+    T->rwet += ((rot || T->rsp[0] || T->rsp[1] ? 32767 : 0) - T->rwet) >> 5;   /* ~25 ms in or out; STOP: out once
+                                                                             * both rotors stand still (DRAG) */
     for (k = 0; k < 2u; k++) {
         T->am[k] = 32767 - mulq15(T->rwet, 32767 - T->am[k]);
         T->fm[k] = mulq15(T->fm[k], T->rwet);
