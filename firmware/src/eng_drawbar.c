@@ -193,39 +193,33 @@ static int32_t drw_e_low(uint32_t e, int32_t v)       /* E0..E7 of a stored DRAW
             return (int32_t)((uint32_t)(uint16_t)v & ((1u << DRW_RLOW[i]) - 1u));
     return v;
 }
-static void drw_rot_pack(const track_t *t, int16_t *e)      /* e: the stored E0..E7, their low bits already in */
+/* bit by bit over the five words' spare bits: pack (e != 0: the values into e) or unpack (into drw_rot) */
+static void drw_rot_bits(int16_t *r, int16_t *e, int pack)
 {
-    const int16_t *r = drw_rot[(uint32_t)(t - trk) % NPART];
-    uint64_t w = 0;
-    uint32_t k, sh = 0;
+    uint32_t k, b, w = 0, pos = DRW_RLOW[0];
     for (k = 0; k < RT_N; k++) {
         const param_desc_t *d = &DRW_ROT_DESC[k];
-        w |= (uint64_t)(((uint32_t)(clamp(r[k], d->min, d->max) - d->min) ^ (uint32_t)(d->def - d->min)) &
-                        ((1u << DRW_ROT_BITS[k]) - 1u)) << sh;
-        sh += DRW_ROT_BITS[k];
-    }
-    for (k = 0; k < 5u; k++) {
-        uint32_t lo = DRW_RLOW[k], n = 16u - lo, s = (uint32_t)DRW_RSLOT[k];
-        e[s] = (int16_t)(uint16_t)(((uint32_t)(uint16_t)e[s] & ((1u << lo) - 1u)) | (uint32_t)(w & ((1u << n) - 1u)) << lo);
-        w >>= n;
+        uint32_t x = (uint32_t)(d->def - d->min), f = pack ? ((uint32_t)(clamp(r[k], d->min, d->max) - d->min) ^ x) : 0u;
+        for (b = 0; b < DRW_ROT_BITS[k]; b++, pos++) {
+            uint16_t *u;
+            if (pos == 16u)
+                pos = DRW_RLOW[++w];
+            u = (uint16_t *)&e[DRW_RSLOT[w]];
+            if (pack)
+                *u = (uint16_t)((*u & ~(1u << pos)) | ((f >> b) & 1u) << pos);
+            else
+                f |= ((uint32_t)(*u >> pos) & 1u) << b;
+        }
+        if (!pack)
+            r[k] = (int16_t)clamp(d->min + (int32_t)(f ^ x), d->min, d->max);
     }
 }
+static void drw_rot_pack(const track_t *t, int16_t *e) { drw_rot_bits(drw_rot[(uint32_t)(t - trk) % NPART], e, 1); }
 static void drw_rot_unpack(track_t *t, const int16_t *e)
 {
-    int16_t *r = drw_rot[(uint32_t)(t - trk) % NPART];
-    uint64_t w = 0;
-    uint32_t k, sh = 0;
-    for (k = 0; k < 5u; k++) {
-        uint32_t lo = DRW_RLOW[k], n = 16u - lo;
-        w |= (uint64_t)((uint32_t)(uint16_t)e[DRW_RSLOT[k]] >> lo) << sh;
-        sh += n;
-    }
-    for (k = 0; k < RT_N; k++) {
-        const param_desc_t *d = &DRW_ROT_DESC[k];
-        uint32_t f = (uint32_t)w & ((1u << DRW_ROT_BITS[k]) - 1u);
-        r[k] = (int16_t)clamp(d->min + (int32_t)(f ^ (uint32_t)(d->def - d->min)), d->min, d->max);
-        w >>= DRW_ROT_BITS[k];
-    }
+    int16_t c[8];
+    memcpy(c, e, sizeof c);
+    drw_rot_bits(drw_rot[(uint32_t)(t - trk) % NPART], c, 0);
 }
 
 /* a project's E1..E3 with CUSTM: each its offset (5 bits) | three bars in base 9 << 5 */
