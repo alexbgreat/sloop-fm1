@@ -34,6 +34,7 @@ enum { MI_COLOR, MI_ZOOM,
 #endif
 #if BOARD_SMK37
        MI_LIMIT,                                   /* SMK-37: AUDIO > LIMITER (fx.c lim_classic) */
+       MI_USBIN,                                   /* SMK-37: USB > USB IN LEVEL (audio.c usbin_lvl: the computer's sound) */
        MI_VEL, MI_BUP, MI_BDN, MI_ACCEL,           /* SMK-37: PLAY > KEY VELOCITY (smk_vel.h), BEND UP, BEND DOWN (smk_wheel.h),
                                                     * KNOB ACCEL (SLOOP's, here) */
        MI_FBS, MI_OWHL,                            /* SMK-37: FADERS > FADER SCREEN (ui_fbank.c), ORGAN WHEEL (eng_drawbar.c
@@ -67,7 +68,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "USB RATE",
 #endif
 #if BOARD_SMK37
-                                              "LIMITER", "KEY VELOCITY", "BEND UP", "BEND DOWN", "KNOB ACCEL",
+                                              "LIMITER", "USB IN LEVEL", "KEY VELOCITY", "BEND UP", "BEND DOWN", "KNOB ACCEL",
                                               "FADER SCREEN", "ORGAN WHEEL", "TRS MIDI OUT",
                                               "MODE", "CHANNEL", "LOCAL", "CC MAP", "KNOBS", "EDIT MAP", "RESET MAP",
 #endif
@@ -77,16 +78,20 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
 #define FBS_N 3u                                   /* FADER SCREEN (ui_fbank.c fb_expire): 4 S, 10 S, HOLD */
 static const char *const FBS_NAME[FBS_N] = {"4 S", "10 S", "HOLD"};
 static uint8_t fb_screen;                          /* (ui_fbank.c) */
+#define USBIN_N 5u                                 /* USB IN LEVEL (audio.c): OFF, -18, -12, -6, 0 DB */
+static const char *const USBIN_NAME[USBIN_N] = {"OFF", "-18 DB", "-12 DB", "-6 DB", "0 DB"};
+static uint8_t usbin_lvl;                          /* (audio.c: 0 DB unless set) */
 #endif
 #if SNOOP37
 static const char *const BOOT_NAME[BOOT_N] = {"SNOOP37", "SLOOP", "NONE"};
 #endif
 #if BOARD_SMK37
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_PLAY, MS_FADERS, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
-static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "PLAY", "FADERS", "MIDI", "DAW", "SYSTEM"};
-static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_VEL, MI_FBS, MI_TRS, MI_DMAP, MI_SYS0,
-                                               MI_COUNT};
-_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_LOWCUT - MI_LIGHTS <= 4 && MI_VEL - MI_LOWCUT <= 4 && MI_FBS - MI_VEL <= 4 &&
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PLAY, MS_FADERS, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PLAY", "FADERS", "MIDI", "DAW",
+                                              "SYSTEM"};
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_USBIN, MI_VEL, MI_FBS, MI_TRS, MI_DMAP,
+                                               MI_SYS0, MI_COUNT};
+_Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_USBIN - MI_LOWCUT <= 4 && MI_VEL - MI_USBIN <= 4 && MI_FBS - MI_VEL <= 4 &&
                MI_TRS - MI_FBS <= 4 && MI_COUNT - MI_SYS0 <= 4,
                "SMK-37: four rows a section (K5..K8)");
 #define MS_GAP 10                                  /* (seven tabs: those around this one that fit, menu_tabs) */
@@ -167,6 +172,7 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_KLAY: return knob_layout ? "SMK" : "FM-1";
     case MI_PADL: return PADL_NAME[pad_light % PADL_N];
     case MI_FBS: return FBS_NAME[fb_screen % FBS_N];
+    case MI_USBIN: return USBIN_NAME[usbin_lvl % USBIN_N];
     case MI_OWHL: return drw_wheel_vib ? "VIBRATO" : "ROTOR";
     case MI_MODE: return daw_on ? "DAW" : "SYNTH";
     case MI_DCH: {
@@ -241,7 +247,7 @@ UI_SMALL static void draw_menu(void)
 #if BOARD_SMK37
     sig += vel_mode * 179424673u + trs_out * 373587883u + smo.dead * 573259391u + bend_up * 817504243u +
            bend_dn * 941083987u + lim_classic * 1500450271u + knob_layout * 2147483647u + pad_light * 1000033u +
-           fb_screen * 1000081u + drw_wheel_vib * 1000099u;
+           fb_screen * 1000081u + drw_wheel_vib * 1000099u + usbin_lvl * 1000117u;
     sig += daw_on * 1000003u + daw_ch * 2000029u + daw_local * 3000017u + daw_user * 4000037u + daw_rel * 5000011u +
            daw_user_changed() * 6000047u + (ui.arm == MI_ARM_RESET && ui.arm_t) * 7000003u;
 #endif
@@ -482,6 +488,14 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
             fb_screen--;
         else if (!s)
             fb_screen = (uint8_t)((fb_screen + 1u) % FBS_N);
+        break;
+    case MI_USBIN:                                     /* right louder, left quieter (stops at the ends); OCT+ steps round */
+        if (s > 0 && usbin_lvl + 1u < USBIN_N)
+            usbin_lvl++;
+        else if (s < 0 && usbin_lvl > 0u)
+            usbin_lvl--;
+        else if (!s)
+            usbin_lvl = (uint8_t)((usbin_lvl + 1u) % USBIN_N);
         break;
     case MI_OWHL:                                      /* right VIBRATO, left ROTOR; OCT+ toggles */
         drw_wheel_vib = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !drw_wheel_vib);

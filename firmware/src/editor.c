@@ -708,6 +708,21 @@ UI_SMALL static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes b
     }
 #endif
     switch (cmd) {
+#if FELUCCA_UAC_OUT
+    case 78u: {                                            /* USB_LOG (SMK-37, a bench tool): the last class requests on EP0:
+                                                            * count, then 8 x 11 bytes, each as two 4-bit halves (low first) */
+        uint32_t i, k;
+        ed_b(cl_n);
+        for (i = 0; i < 8u; i++)
+            for (k = 0; k < 11u; k++) {
+                ed_b(cl_log[i][k] & 15u);
+                ed_b(cl_log[i][k] >> 4);
+            }
+        ed_b(spk_mute);
+        ed_v(spk_vol / 256);                               /* dB */
+        break;
+    }
+#endif
     case ED_LIVE:                                          /* v12: the LIVE page */
         if (na < 1u)
             return;

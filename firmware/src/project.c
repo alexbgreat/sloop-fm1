@@ -830,7 +830,8 @@ static void smkset_fill(smkset_t *s)
     s->bup = (uint8_t)bend_up_byte(bend_up);
     s->bdn = (uint8_t)bend_dn_byte(bend_dn, bend_up);
     s->lim = (uint8_t)(lim_classic != 0u);
-    s->klay = (uint8_t)((knob_layout != 0u) | (fb_screen % FBS_N) << 1 | (drw_wheel_vib & 1u) << 3);   /* (bits 1..3:
+    s->klay = (uint8_t)((knob_layout != 0u) | (fb_screen % FBS_N) << 1 | (drw_wheel_vib & 1u) << 3 |
+                        ((USBIN_N - 1u - usbin_lvl % USBIN_N) & 7u) << 4);   /* (bits 4..6: USB IN LEVEL, 0 = 0 DB) */   /* (bits 1..3:
                                                  * FADER SCREEN, ORGAN WHEEL; earlier builds read bit 0 alone) */
     s->padl = (uint8_t)(pad_light % PADL_N);
 #if SNOOP37
@@ -850,6 +851,7 @@ static void smkset_boot(void)                      /* after the settings (persis
         knob_layout_apply();
         fb_screen = (uint8_t)(((s.klay >> 1) & 3u) % FBS_N);
         drw_wheel_vib = (uint8_t)((s.klay >> 3) & 1u);
+        usbin_lvl = (uint8_t)(((s.klay >> 4) & 7u) < USBIN_N ? USBIN_N - 1u - ((s.klay >> 4) & 7u) : USBIN_N - 1u);
         pad_light = (uint8_t)(s.padl < PADL_N ? s.padl : PADL_100);
 #if SNOOP37
         boot_logo = (uint8_t)(s.boot < BOOT_N ? s.boot : 0u);

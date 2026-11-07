@@ -293,7 +293,9 @@ FADER BANK closes it (one screen at a time).
 
 - **USB audio output:** the keyboard is a USB speaker too ("Speakers (Felucca)", 44.1 kHz stereo). The computer's sound is
   mixed after the synth at the MASTER level, times the computer's own volume slider (the keyboard's hardware volume, −60..0
-  dB). It is not sent back into the USB recording ("Line (Felucca)").
+  dB) and HOME menu > USB > USB IN LEVEL (OFF, −18, −12, −6, 0 dB; 0 dB by default). It follows the MASTER knob's
+  travel in a straight line (30 % of the knob = 30 % of the level), not the knob's SOFT / CLASSIC curve. It is not sent
+  back into the USB recording ("Line (Felucca)").
 - **MASTER from the computer:** the Universal Real-Time SysEx Master Volume, `F0 7F 7F 04 01 <lsb> <msb> F7` (any device
   ID; the MSB sets the level, 0..127 = 0..100 % of the knob's travel), sets MASTER and shows it in the top bar. It holds
   until the MASTER knob is turned.

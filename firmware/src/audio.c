@@ -31,6 +31,10 @@ static uint32_t scope_w;
  * packets' 44 / 45 frames and the poll's phase remain); spk_mix adds the stream to the master (after the USB input's
  * tap: the computer does not record its own sound), at the MASTER knob's level */
 static uint32_t spk_frac, spk_step = 65536u, spk_gain;
+/* HOME menu > USB > USB IN LEVEL (ui_menu.c, saved in smkset klay bits 4..6 as 4 - the index: 0 = 0 dB, the default) */
+#define USBIN_N 5u
+static const uint16_t USBIN_Q12[USBIN_N] = {0, 516, 1029, 2053, 4096};   /* OFF, -18, -12, -6, 0 dB */
+static uint8_t usbin_lvl = USBIN_N - 1u;
 static int32_t spk_ef, spk_int;
 static uint8_t spk_go;
 static void spk_half(void)
@@ -78,7 +82,8 @@ static void spk_mix(int32_t *out, uint32_t n)
     if (!spk_go)
         return;
     r = spk_r, f = spk_frac, g = spk_gain;
-    m = ((song.master_q12 > 4096u ? 4096u : song.master_q12) * spk_lvl) >> 12;   /* MASTER x the host's volume */
+    m = (((spk_master_lin > 4096u ? 4096u : spk_master_lin) * spk_lvl) >> 12) * USBIN_Q12[usbin_lvl % USBIN_N] >> 12;
+                                                        /* MASTER's travel x the host's volume x USB IN LEVEL */
     for (i = 0; i < n; i++) {
         uint32_t a = spk_ring[r & (SPK_N - 1u)], b = spk_ring[(r + 1u) & (SPK_N - 1u)];
         int32_t fl = (int32_t)(f >> 1), k, l = (int16_t)a, rr = (int16_t)(a >> 16), v;

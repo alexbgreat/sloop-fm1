@@ -463,6 +463,9 @@ UI_SMALL static void fm1_main(void)
                     shown = a;
                 }
                 song.master_q12 = smk_master_q12(k10, lim_classic);   /* (HOME menu > AUDIO > LIMITER: its knob law, fx.c) */
+#if FELUCCA_UAC_OUT
+                spk_master_lin = k10 * 4096u / 1023u;          /* the computer's sound: the knob's travel (audio.c spk_mix) */
+#endif
 #else
                 song.master_q12 = (k10 * k10) >> 8;            /* 0 .. ~4096 */
 #endif

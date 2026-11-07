@@ -154,6 +154,12 @@ static const uint16_t SPK_DB[61] = {4096, 3651, 3254, 2900, 2584, 2303, 2053, 18
 static uint8_t spk_mute;
 static int16_t spk_vol;                          /* 1/256 dB */
 static volatile uint32_t spk_lvl = 4096u;
+static volatile uint32_t spk_master_lin = 4096u; /* the MASTER knob's position, linear (Q12; main.c): the computer's sound
+                                                  * follows the knob's travel, not its SOFT / CLASSIC law (-53 dB at 30 %) */
+/* the last 8 class requests on EP0 (s[0..7], then bit 0 stalled, bit 1 data taken, the first data byte, the second):
+ * the editor's USB_LOG (78) reads them */
+static uint8_t cl_log[8][11], cl_n;
+static int8_t cl_cur = -1;
 static void spk_level(void)
 {
     int32_t db = (-(int32_t)spk_vol + 128) >> 8;
@@ -699,6 +705,11 @@ static void ep0_service(void)
 #if FELUCCA_UAC_OUT
     if (uac.e0_rx >= 3u) {                              /* SET_CUR, the feature unit */
         uint32_t n = sie_rd(S_COUNT0);
+        if (cl_cur >= 0) {
+            cl_log[cl_cur][8] |= 2u;
+            cl_log[cl_cur][9] = ep0buf[0];
+            cl_log[cl_cur][10] = ep0buf[1];
+        }
         if (uac.e0_rx == 3u && n >= 1u)
             spk_mute = ep0buf[0] & 1u;
         if (uac.e0_rx == 5u && n >= 1u)
@@ -727,6 +738,16 @@ static void ep0_service(void)
     for (i = 0; i < 8u; i++)
         s[i] = ep0buf[i];
     usb.setups++;
+#if FELUCCA_UAC_OUT
+    if ((s[0] & 0x60u) == 0x20u) {
+        cl_cur = (int8_t)(cl_n & 7u);
+        memcpy(cl_log[cl_cur], s, 8);
+        cl_log[cl_cur][8] = cl_log[cl_cur][9] = cl_log[cl_cur][10] = 0;
+        cl_n++;
+    } else {
+        cl_cur = -1;
+    }
+#endif
     wvalue = (uint16_t)(s[2] | s[3] << 8);
     wlength = (uint16_t)(s[6] | s[7] << 8);
     switch ((uint32_t)s[0] << 8 | s[1]) {
@@ -955,6 +976,10 @@ ack:
     sie_wr(S_CSR0, 0x48);
     return;
 stall:
+#if FELUCCA_UAC_OUT
+    if (cl_cur >= 0)
+        cl_log[cl_cur][8] |= 1u;
+#endif
     sie_wr(S_INDEX, 0);
     sie_wr(S_CSR0, 0x60);
 }
