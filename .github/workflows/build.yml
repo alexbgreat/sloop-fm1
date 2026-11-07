@@ -78,8 +78,8 @@ jobs:
           SNOOP37: '1'
           PYTHON: python
         run: sh ./build.sh
-      - name: Code size by function (the 40 largest, and the organ's)
-        if: always()
+      - name: Code size by function (when the image does not fit)
+        if: failure()
         run: |
           NM="$(ls "$JIELI_TOOLCHAIN"/pi32v2/bin/*nm* 2>/dev/null | head -1)"
           echo "nm: $NM"
