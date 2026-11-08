@@ -1,5 +1,14 @@
 # Changes
 
+## Unreleased
+
+- **16-band graphic EQ** (GLO > EQ, SMK-37 builds): the last filter of the master bus, in front of the MASTER volume, so
+  it shapes the headphone/line output, the USB recording and the visualiser alike. The 16 pads are the 16 bands (a pad
+  picks its band, lit green up / red down by its gain), SELECT scrolls the bands one by one, the four dials set four
+  neighbouring bands in 0.5 dB steps (±12 dB). OCT− flattens the band (twice quickly: all), OCT+ switches the EQ on and
+  off. Flat bands cost nothing and a flat EQ leaves the signal bit for bit as it was. Kept with the SMK-37 settings;
+  earlier data reads as flat. See [SMK37.md](SMK37.md#graphic-eq).
+
 ## Snoop37 2.7.2
 
 - **PAD LIGHT** (HOME menu > LIGHTS, K8): the pads at 100 % (default, as before), 75 %, 50 % or 25 %. The bright

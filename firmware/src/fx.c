@@ -1238,6 +1238,9 @@ static void mix_block(int32_t *out, uint32_t n)
     dust_process(mix_l, mix_r, n);
     punch_process(mix_l, mix_r, n);
     djf_process(mix_l, mix_r, n);
+#if BOARD_SMK37
+    eq_process(mix_l, mix_r, n);                        /* SMK-37: the 16-band graphic EQ (geq.h), the last filter before MASTER */
+#endif
     m1 = (int32_t)song.master_q12;
     m0 = master_cur < 0 ? m1 : master_cur;
     master_cur = m1;

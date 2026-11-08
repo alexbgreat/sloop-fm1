@@ -275,6 +275,10 @@ UI_SMALL static void ui_leds(void)
     if (ui.layer == LY_FX) {                       /* FX: OCT- / OCT+ lit while REV / ECHO THROW (2.6) */
         led_put(nl, panel.btn[B_OCTDN], ((thr_req | thr_ed) & 1u) != 0u);
         led_put(nl, panel.btn[B_OCTUP], ((thr_req | thr_ed) & 2u) != 0u);
+#if BOARD_SMK37
+    } else if (eq_pads_on()) {                     /* GLO > EQ: OCT+ lit while the EQ is on (OCT- flattens the band) */
+        led_put(nl, panel.btn[B_OCTUP], !eq_off);
+#endif
     } else if (is_drum(TSEL)) {                    /* the drum track: OCT- / OCT+ lit while ghost / hard */
         led_put(nl, panel.btn[B_OCTDN], (fm1_in.buttons & dyn_bit[0]) != 0u);
         led_put(nl, panel.btn[B_OCTUP], (fm1_in.buttons & dyn_bit[1]) != 0u);
@@ -299,7 +303,7 @@ UI_SMALL static void ui_leds(void)
     smk_pad_piano = ui.layer == LY_SCALE;          /* SCALE held: the pads are a little piano (smk_input.h) */
     fm1_led[SMK_BTN_FADER_BANK] = fb_shown();      /* FADER BANK lit while its screen is up (one bank screen at a time) */
     fm1_led[SMK_BTN_KNOB_BANK] = pick_pin || (int32_t)(fm1_ms - pick_k4_until) < 0;   /* KNOB BANK: picker pinned, PRESETS turning */
-    smk_pad_pick = (uint16_t)(pick_shown() ? 0xFFFFu : 0u);   /* (these pads: no notes) */
+    smk_pad_pick = (uint16_t)(pick_shown() || eq_pads_on() ? 0xFFFFu : 0u);   /* (these pads: no notes) */
     smk_pad_grid = (uint8_t)padgrid_on();          /* (steps and tiles: reading order) */
     smk_pad_drums = (uint8_t)(!pad_steps && ui.layer == LY_PLAY && !smk_pad_grid);   /* the pads: DRUM KIT or STEPS */
     smk_pad_steps = (uint8_t)(pad_steps && ui.layer == LY_PLAY && !smk_pad_grid);
@@ -313,6 +317,8 @@ UI_SMALL static void ui_leds(void)
         const uint8_t *col = PAL[song.sel % NTRK];
         if (pick_shown())
             pick_leds();
+        else if (eq_pads_on())
+            eq_leds();                             /* GLO > EQ: a pad a band (ui_geq.c) */
         else
         if (ui.layer == LY_SCALE) {                /* white and black keys lit white, the scale green, its root brighter */
             uint32_t sk = scale_keys(0), rk = scale_keys(1);
@@ -580,6 +586,12 @@ UI_SMALL static void edit_param(uint32_t slot, int32_t steps)
         tracks_edit(slot, steps);
         return;
     }
+#if BOARD_SMK37
+    if (pg->scope == SC_EQ) {                             /* the dials set four of the EQ's bands (ui_geq.c) */
+        eq_edit(slot, steps);
+        return;
+    }
+#endif
     if (pg->graph == GR_BROWSE) {                         /* KNOB 1: one preset, KNOB 2: the next / previous engine */
         if (slot == 0u && !is_drum(TSEL)) {
             uint32_t total, cur = preset_pos(&total);
@@ -1232,6 +1244,9 @@ UI_SMALL static void ui_input(void)
         for (p = 0; h && p < SMK_NPAD; p++)
             if ((h >> p) & 1u && pick_shown())
                 pick_select(p);                         /* reading order, as the screen */
+            else if ((h >> p) & 1u && eq_pads_on())
+                eq_pick(p);                             /* GLO > EQ: the pad's band */
+        eq_tick();                                      /* (the EQ's settings, a few seconds after the last change) */
     }
     if (home == BT_TAP && (fb_shown() || pick_shown())) {   /* PATCH tapped: closes the FADER BANK screen / picker */
         if (fb_shown())
@@ -1336,6 +1351,9 @@ UI_SMALL static void ui_input(void)
         return;
     }
 #endif
+#if BOARD_SMK37
+    eq_buttons(&pressed);                               /* GLO > EQ: OCT- flattens, OCT+ switches the EQ (ui_geq.c) */
+#endif
     if (home == BT_TAP) {                               /* HOME acts on release: a hold opens the menu */
         if (!ui.home && cur_page()->scope == SC_TRK && !vis_on)
             vis_open();                                 /* HOME on HOME: the visualiser (ui_vis.c) */
@@ -1406,6 +1424,10 @@ UI_SMALL static void ui_input(void)
         for (k = 0; k < 4u; k++)
             panel_enc(EN_K1 + k);
     }
+#if BOARD_SMK37
+    if (eq_page() && !rec_wait && !ft_on && (s = panel_enc(EN_SELECT)) != 0)
+        eq_scroll(s);                                   /* GLO > EQ: SELECT scrolls the bands (the pages: < >) */
+#endif
     if ((s = panel_enc(EN_SELECT)) != 0 && (rec_wait || ft_on || !page_walk(s))) {   /* SELECT: the pages of the
                                                      * family shown, else (and on the REC screen) the tempo */
         song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM] + accel(EN_SELECT, s, 200), GP[G_BPM].min, GP[G_BPM].max);

@@ -36,7 +36,8 @@ enum {
     F_SWING,                    /* 0..100: MPC swing, 50 % (straight) .. 75 % */
     F_FILT,                     /* -64..63: the DJ filter, LP <- OFF -> HP */
     F_HZD10,                    /* tenths of a Hz: 67 = 6.7 Hz (DRAWBAR's ROTOR pages) */
-    F_HZX10                     /* tens of Hz: 80 = 800 Hz */
+    F_HZX10,                    /* tens of Hz: 80 = 800 Hz */
+    F_HDB                       /* half dB: -24..24 = -12..+12 dB (SMK-37 EQ) */
 };
 
 typedef struct {

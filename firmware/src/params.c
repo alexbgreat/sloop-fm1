@@ -372,6 +372,22 @@ static void param_format(const param_desc_t *d, int32_t v, char *val, const char
         fmt_int(val, v * 10);
         *unit = "Hz";
         break;
+    case F_HDB: {                                     /* half dB: "+3.5", "-12", "0", "+0.5" (fmt_fix would print ".5") */
+        char t[8];
+        uint32_t a = (uint32_t)(v < 0 ? -v : v), n = 0;
+        if (v)
+            t[n++] = v < 0 ? '-' : '+';
+        fmt_int(t + n, (int32_t)(a / 2u));
+        n = str_len(t);
+        if (a & 1u) {
+            t[n++] = '.';
+            t[n++] = '5';
+        }
+        t[n] = 0;
+        str_cpy(val, t, 7);
+        *unit = "dB";
+        break;
+    }
     default:
         if (d->names) {                               /* F_INT with a 0-terminated name list: the range */
             uint32_t k = 0;                           /* split evenly over the names (engine desc hooks) */
@@ -391,15 +407,24 @@ static void param_format(const param_desc_t *d, int32_t v, char *val, const char
 enum { FAM_HOME, FAM_ENV, FAM_LFO, FAM_FX, FAM_SCL, FAM_EDIT, FAM_GLO, FAM_SAVE, FAM_ARP, FAM_SEQ, FAM_TRK,
        FAM_COUNT };
 enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK, SC_SONG, SC_DRUM,
-       SC_ROTOR };                                  /* DRAWBAR's ROTOR pages: eng_drawbar.c drw_rot, ids RT_* */
+       SC_ROTOR,                                    /* DRAWBAR's ROTOR pages: eng_drawbar.c drw_rot, ids RT_* */
+       SC_EQ };                                     /* SMK-37: the 16-band graphic EQ (geq.h): four of its bands a page */
 enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_BROWSE, GR_SLOTS, GR_USER, GR_TRK,
-       GR_SLCR, GR_INS };
+       GR_SLCR, GR_INS, GR_EQ };
 
 typedef struct {
     const char *title;
     uint8_t fam, scope, graph;
     uint8_t id[4];               /* param ids; 0xFF = empty slot */
 } page_t;
+
+#if BOARD_SMK37
+/* GLO > EQ: the 16 sliders (geq.h eq_t, half dB), labelled by their centre; the page shows eq_win .. eq_win + 3 */
+#define EQD(l) {l, F_HDB, -EQ_HMAX, EQ_HMAX, 0, 0, 0}
+static const param_desc_t EQ_DESC[EQ_N] = {
+    EQD("40Hz"), EQD("60Hz"), EQD("90Hz"), EQD("130Hz"), EQD("200Hz"), EQD("300Hz"), EQD("440Hz"), EQD("660Hz"),
+    EQD("980Hz"), EQD("1.45k"), EQD("2.2k"), EQD("3.25k"), EQD("4.8k"), EQD("7.2k"), EQD("10.7k"), EQD("16k")};
+#endif
 
 static const page_t PAGES[] = {
     {"ENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_ATK, P_DEC, P_SUS, P_REL}},
@@ -428,6 +453,9 @@ static const page_t PAGES[] = {
     {"VOICE 2", FAM_EDIT, SC_TRACK, GR_NONE, {P_ALLOC, P_DETUNE, P_PAN, P_MUTE}},
     {"GLOBAL", FAM_GLO, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, G_TUNE}},
     {"MASTER", FAM_GLO, SC_GLOBAL, GR_NONE, {G_DUST, G_DUCK, G_FILT, G_ROLL}},
+#if BOARD_SMK37
+    {"EQ", FAM_GLO, SC_EQ, GR_EQ, {0, 1, 2, 3}},   /* 16-band graphic EQ, the last filter before MASTER (geq.h, ui_geq.c) */
+#endif
     {"SYSTEM", FAM_GLO, SC_GLOBAL, GR_NONE, {G_MIDI, G_SYNC, G_ROUTE, G_INFO}},
     {"DRUMS", FAM_GLO, SC_GLOBAL, GR_NONE, {G_DRCH, G_DRLVL, G_DRREV, G_DRDLY}},   /* GM kit on MIDI ch 10 */
     {"MIDI", FAM_GLO, SC_GLOBAL, GR_NONE, {G_CH1, G_CH2, G_CH3, G_DRCH}},   /* 2.6: each track's channel, the drums' too */
@@ -482,6 +510,13 @@ static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **
         *valp = 0;
         return 0;
     }
+#if BOARD_SMK37
+    if (pg->scope == SC_EQ) {                       /* the four bands from eq_win; the slot's id is not used */
+        uint32_t band = (eq_win + slot) % EQ_N;
+        *valp = &eq_t[band];
+        return &EQ_DESC[band];
+    }
+#endif
     if (pg->scope == SC_GLOBAL) {
         *valp = &song.g[id];
         return &GP[id];

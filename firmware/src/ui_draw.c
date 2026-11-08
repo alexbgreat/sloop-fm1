@@ -385,6 +385,10 @@ UI_SMALL static uint32_t graph_signature(void)
     }
     if (pg->graph == GR_SLCR && t->p[P_SLCR])        /* the SLICER's step playing */
         h ^= (sl[song.sel].idx + 1u) * 2654435761u;
+#if BOARD_SMK37
+    if (pg->graph == GR_EQ)                          /* the EQ's bars (ui_geq.c) */
+        h ^= eq_signature();
+#endif
     if (pg->graph == GR_SLOTS)                       /* (a checksum over each slot) */
         for (i = 0; i < 4u; i++)
             h ^= (uint32_t)project_used(i) << (20u + i);
@@ -734,6 +738,11 @@ UI_SMALL static void draw_graph(void)
             cv_oy = 0;
             graph_user();
             break;
+#if BOARD_SMK37
+        case GR_EQ:
+            graph_eq();
+            break;
+#endif
         default:
             if (big_page(pg)) {
                 cv_oy = 0;
@@ -913,6 +922,12 @@ UI_SMALL static void draw_columns(void)
         draw_column(3, "SAVE", "--", "", C_HI, -1, ICON_AUTO);
         return;
     }
+#if BOARD_SMK37
+    if (cur_page()->scope == SC_EQ) {                  /* four bands of the graphic EQ (ui_geq.c) */
+        eq_columns();
+        return;
+    }
+#endif
     if (cur_page()->scope == SC_STEP) {
         static const char *const TIME_N[3] = {"NOTE", "TIE", "REST"};
         const step_t *st = &TSEL->step[ui.cursor];

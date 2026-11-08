@@ -119,6 +119,8 @@ pads_rec_menu() {
     sed -n '/^    if (ui.menu) {/,/^    }/p' firmware/src/ui_input.c | grep -q 'transport_req = song.playing ? 2 : 1;' && echo checked
 }
 run "SMK-37 pads: DRUM KIT hits recorded into the drum track; PLAY / REC work in the HOME menu" pads_rec_menu
+$CC -O2 -Ifirmware/src -o "$OUT/geq_test" tests/geq_test.c -lm
+run "SMK-37 16-band graphic EQ: flat is untouched, a slider is its dB, equal sliders flat, stable, silent tail, no click" "$OUT/geq_test"
 $CC -o "$OUT/smk_daw_test" tests/smk_daw_test.c
 run "SMK-37 DAW mode: the DEFAULT map, types, MIDI bytes (CC, notes, bend, MMC), knobs, toggles, rate, flash object" "$OUT/smk_daw_test"
 $CC -O2 -w -DSMK_MIX=1 -Ibuild/gen -Ifirmware/src -Ifirmware/hal -Itests -o "$OUT/daw_ui_test" tests/daw_ui_test.c -lm
