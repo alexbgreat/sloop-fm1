@@ -43,11 +43,21 @@ static inline int32_t eq_clamp(int32_t v, int32_t lo, int32_t hi) { return v < l
 
 static void eq_coef(eqb_t *b, uint32_t i, int32_t e)    /* the bell i at e half dB (e != 0) */
 {
-    int64_t g = EQ_G[i], k = EQ_K[e + EQ_EMAX], den;
+    int64_t g = EQ_G[i], k = EQ_K[e + EQ_EMAX];
+    uint32_t den, r = 1, q = 0, n;
     b->e = (int8_t)e;
     b->c = EQ_BG[e + EQ_EMAX];
-    den = ((int64_t)1 << 28) + ((g * (g + k)) >> 28);
-    b->a1 = (int32_t)(((uint64_t)1 << 56) / (uint64_t)den);   /* (unsigned, as phys_dsp.c: the target's helper) */
+    den = (uint32_t)(((int64_t)1 << 28) + ((g * (g + k)) >> 28));    /* 1 + g (g + k), Q28: below 2^32 */
+    for (n = 0; n < 56u; n++) {                      /* q = 2^56 / den by shift and subtract: the target has no 64-bit divide */
+        uint32_t top = r >> 31;
+        r <<= 1;
+        q <<= 1;
+        if (top || r >= den) {
+            r -= den;
+            q |= 1u;
+        }
+    }
+    b->a1 = (int32_t)q;
     b->a2 = (int32_t)((g * b->a1) >> 28);
     b->a3 = (int32_t)((g * b->a2) >> 28);
 }
