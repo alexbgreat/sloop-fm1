@@ -652,3 +652,51 @@ static void vis_select(int32_t s)
     ui.force = 1;
     settings_later = 1;                                 /* (kept with the settings, once stopped) */
 }
+
+#if BOARD_SMK37
+/* GLO > EQ (ui_peq.c): the spectrum of the mix under the EQ's curve, as the visualiser takes it (the scope, 22 kHz,
+ * MASTER all the way up), a height per column (peq_tab.h EQ_XB: 20 Hz .. 20 kHz, nothing above 11 kHz, the bins
+ * 43 Hz apart: the lowest octave is coarse), 60 dB over hmax px; bars fall back at most 3 px a frame */
+static void eq_spec_update(uint8_t *h, uint32_t hmax)
+{
+    static int16_t lv[VIS_FFT / 2u + 1u];
+    uint32_t i, w = scope_w, x;
+    for (i = 0; i < VIS_FFT; i++)
+        vis_l[i] = scope_buf[(w + i) & (SCOPE_N - 1u)];
+    vis_fft();
+    for (i = 0; i <= VIS_FFT / 2u; i++) {           /* each bin's level, 16 a 6 dB (a full-scale sine ~208) */
+        int32_t a, b, m, lg = 0;
+        if (i == VIS_FFT / 2u) {
+            lv[i] = lv[i - 1u];
+            break;
+        }
+        a = vis_re[i] < 0 ? -vis_re[i] : vis_re[i], b = vis_im[i] < 0 ? -vis_im[i] : vis_im[i];
+        m = a > b ? a + b / 2 : b + a / 2;
+        if (m < 2) {
+            lv[i] = 0;
+            continue;
+        }
+        while ((m >> lg) > 1)
+            lg++;
+        lv[i] = (int16_t)(lg * 16 + (((m << 4) >> lg) & 15));
+    }
+    for (x = 0; x < EQ_COLS; x++) {
+        uint32_t pa = EQ_XB[x], pb = EQ_XB[x + 1u], ka = pa >> 4, kb = pb >> 4;
+        int32_t v, t;
+        if (ka >= VIS_FFT / 2u) {
+            v = 0;                                  /* above the scope's 11 kHz */
+        } else if (kb > ka + 1u) {                  /* several bins in the column: the loudest */
+            uint32_t k;
+            v = 0;
+            for (k = ka + 1u; k <= kb && k < VIS_FFT / 2u; k++)
+                if (lv[k] > v)
+                    v = lv[k];
+        } else {                                    /* a column between two bins: between their levels */
+            uint32_t k = ka ? ka : 1u, f = ka ? pa & 15u : 0u;
+            v = (lv[k] * (int32_t)(16u - f) + lv[k + 1u] * (int32_t)f) >> 4;
+        }
+        t = clamp((v - 48) * (int32_t)hmax / 160, 0, (int32_t)hmax);   /* 160: 60 dB */
+        h[x] = (uint8_t)(t >= h[x] ? t : h[x] > 3u ? h[x] - 3u : 0u);
+    }
+}
+#endif

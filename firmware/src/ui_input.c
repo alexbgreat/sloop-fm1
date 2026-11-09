@@ -276,7 +276,7 @@ UI_SMALL static void ui_leds(void)
         led_put(nl, panel.btn[B_OCTDN], ((thr_req | thr_ed) & 1u) != 0u);
         led_put(nl, panel.btn[B_OCTUP], ((thr_req | thr_ed) & 2u) != 0u);
 #if BOARD_SMK37
-    } else if (eq_pads_on()) {                     /* GLO > EQ: OCT+ lit while the EQ is on (OCT- flattens the band) */
+    } else if (eq_pads_on()) {                     /* GLO > EQ: OCT+ lit while the EQ is on (OCT- resets the band) */
         led_put(nl, panel.btn[B_OCTUP], !eq_off);
 #endif
     } else if (is_drum(TSEL)) {                    /* the drum track: OCT- / OCT+ lit while ghost / hard */
@@ -318,7 +318,7 @@ UI_SMALL static void ui_leds(void)
         if (pick_shown())
             pick_leds();
         else if (eq_pads_on())
-            eq_leds();                             /* GLO > EQ: a pad a band (ui_geq.c) */
+            eq_leds();                             /* GLO > EQ: pads 1..5 the bands (ui_peq.c) */
         else
         if (ui.layer == LY_SCALE) {                /* white and black keys lit white, the scale green, its root brighter */
             uint32_t sk = scale_keys(0), rk = scale_keys(1);
@@ -587,7 +587,7 @@ UI_SMALL static void edit_param(uint32_t slot, int32_t steps)
         return;
     }
 #if BOARD_SMK37
-    if (pg->scope == SC_EQ) {                             /* the dials set four of the EQ's bands (ui_geq.c) */
+    if (pg->scope == SC_EQ) {                             /* the dials: the picked band's TYPE FREQ GAIN Q (ui_peq.c) */
         eq_edit(slot, steps);
         return;
     }
@@ -1352,7 +1352,7 @@ UI_SMALL static void ui_input(void)
     }
 #endif
 #if BOARD_SMK37
-    eq_buttons(&pressed);                               /* GLO > EQ: OCT- flattens, OCT+ switches the EQ (ui_geq.c) */
+    eq_buttons(&pressed);                               /* GLO > EQ: OCT- flattens, OCT+ switches the EQ (ui_peq.c) */
 #endif
     if (home == BT_TAP) {                               /* HOME acts on release: a hold opens the menu */
         if (!ui.home && cur_page()->scope == SC_TRK && !vis_on)
@@ -1426,7 +1426,7 @@ UI_SMALL static void ui_input(void)
     }
 #if BOARD_SMK37
     if (eq_page() && !rec_wait && !ft_on && (s = panel_enc(EN_SELECT)) != 0)
-        eq_scroll(s);                                   /* GLO > EQ: SELECT scrolls the bands (the pages: < >) */
+        eq_scroll(s);                                   /* GLO > EQ: SELECT picks the next / previous band (the pages: < >) */
 #endif
     if ((s = panel_enc(EN_SELECT)) != 0 && (rec_wait || ft_on || !page_walk(s))) {   /* SELECT: the pages of the
                                                      * family shown, else (and on the REC screen) the tempo */

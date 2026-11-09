@@ -46,7 +46,7 @@
 #include "engines.c"
 #include "drums.c"
 #if BOARD_SMK37
-#include "geq.h"             /* SMK-37: the 16-band graphic EQ (DSP, tables), params.c's EQ page, fx.c's last filter */
+#include "peq.h"             /* SMK-37: the 5-band parametric EQ (DSP, tables), params.c's EQ page, fx.c's last filter */
 #endif
 #include "params.c"
 #include "voice.c"
@@ -117,7 +117,7 @@
 #include "icons.c"           /* parameter icons (FELUCCA_ICONS), used by ui_draw.c */
 #if BOARD_SMK37
 #include "ui_pick.c"          /* SMK-37 Pro: the pad sound picker */
-#include "ui_geq.c"           /* SMK-37: GLO > EQ: pads pick a band, SELECT scrolls, the dials set four bands */
+#include "ui_peq.c"           /* SMK-37: GLO > EQ: the spectrum and the curve; pads / SELECT pick a band, the dials set it */
 #endif
 #include "ui_draw.c"
 #include "ui_vis.c"           /* the full-screen visualiser (HOME on HOME, 2.4) */

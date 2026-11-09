@@ -386,7 +386,7 @@ UI_SMALL static uint32_t graph_signature(void)
     if (pg->graph == GR_SLCR && t->p[P_SLCR])        /* the SLICER's step playing */
         h ^= (sl[song.sel].idx + 1u) * 2654435761u;
 #if BOARD_SMK37
-    if (pg->graph == GR_EQ)                          /* the EQ's bars (ui_geq.c) */
+    if (pg->graph == GR_EQ)                          /* the EQ's curve and its live spectrum (ui_peq.c) */
         h ^= eq_signature();
 #endif
     if (pg->graph == GR_SLOTS)                       /* (a checksum over each slot) */
@@ -923,7 +923,7 @@ UI_SMALL static void draw_columns(void)
         return;
     }
 #if BOARD_SMK37
-    if (cur_page()->scope == SC_EQ) {                  /* four bands of the graphic EQ (ui_geq.c) */
+    if (cur_page()->scope == SC_EQ) {                  /* the picked band of the parametric EQ (ui_peq.c) */
         eq_columns();
         return;
     }

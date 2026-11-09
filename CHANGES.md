@@ -2,12 +2,14 @@
 
 ## Unreleased
 
-- **16-band graphic EQ** (GLO > EQ, SMK-37 builds): the last filter of the master bus, in front of the MASTER volume, so
-  it shapes the headphone/line output, the USB recording and the visualiser alike. The 16 pads are the 16 bands (a pad
-  picks its band, lit green up / red down by its gain), SELECT scrolls the bands one by one, the four dials set four
-  neighbouring bands in 0.5 dB steps (±12 dB). OCT− flattens the band (twice quickly: all), OCT+ switches the EQ on and
-  off. Flat bands cost nothing and a flat EQ leaves the signal bit for bit as it was. Kept with the SMK-37 settings;
-  earlier data reads as flat. See [SMK37.md](SMK37.md#graphic-eq).
+- **5-band parametric EQ** (GLO > EQ, SMK-37 builds): the last filter of the master bus, in front of the MASTER volume,
+  so it shapes the headphone/line output, the USB recording and the visualiser alike. Each band is a BELL, LOW SHELF,
+  HIGH SHELF, LOW CUT, HIGH CUT or OFF, with FREQ (20 Hz .. 16 kHz, ~1/12 octave steps), GAIN (±12 dB, 0.5 dB steps) and
+  Q (0.3 .. 8) on the four dials; pads 1–5 or SELECT pick the band, OCT− resets it (twice: all), OCT+ switches the EQ.
+  The screen shows the live spectrum with the EQ's response curve and the bands' handles over it. Every move glides or
+  fades, flat bands cost nothing and a flat EQ leaves the signal bit for bit as it was. Kept with the SMK-37 settings;
+  earlier data reads as flat. See [SMK37.md](SMK37.md#parametric-eq). (It replaces a 16-band graphic EQ of one test
+  build, which used most of the CPU and made the sound break up.)
 
 ## Snoop37 2.7.2
 

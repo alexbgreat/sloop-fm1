@@ -372,6 +372,25 @@ static void param_format(const param_desc_t *d, int32_t v, char *val, const char
         fmt_int(val, v * 10);
         *unit = "Hz";
         break;
+#if BOARD_SMK37
+    case F_EQHZ: {                                    /* a FREQ step (peq_tab.h): "21.2" Hz, "250" Hz, "1.06" / "10.6" kHz */
+        uint32_t h10 = EQ_HZ10[clamp(v, 0, EQ_NF - 1)];
+        if (h10 < 1000u)
+            fmt_fix(val, (int32_t)h10, 1);
+        else if (h10 < 10000u)
+            fmt_int(val, (int32_t)(h10 / 10u));
+        else if (h10 < 100000u)
+            fmt_fix(val, (int32_t)(h10 / 100u), 2);
+        else
+            fmt_fix(val, (int32_t)(h10 / 1000u), 1);
+        *unit = h10 < 10000u ? "Hz" : "kHz";
+        break;
+    }
+    case F_EQQ:                                       /* a Q step: "0.71", "8.00" */
+        fmt_fix(val, EQ_QX100[clamp(v, 0, EQ_NQ - 1)], 2);
+        *unit = "";
+        break;
+#endif
     case F_HDB: {                                     /* half dB: "+3.5", "-12", "0", "+0.5" (fmt_fix would print ".5") */
         char t[8];
         uint32_t a = (uint32_t)(v < 0 ? -v : v), n = 0;
@@ -408,7 +427,7 @@ enum { FAM_HOME, FAM_ENV, FAM_LFO, FAM_FX, FAM_SCL, FAM_EDIT, FAM_GLO, FAM_SAVE,
        FAM_COUNT };
 enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK, SC_SONG, SC_DRUM,
        SC_ROTOR,                                    /* DRAWBAR's ROTOR pages: eng_drawbar.c drw_rot, ids RT_* */
-       SC_EQ };                                     /* SMK-37: the 16-band graphic EQ (geq.h): four of its bands a page */
+       SC_EQ };                                     /* SMK-37: the 5-band parametric EQ (peq.h): the picked band */
 enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_BROWSE, GR_SLOTS, GR_USER, GR_TRK,
        GR_SLCR, GR_INS, GR_EQ };
 
@@ -419,11 +438,14 @@ typedef struct {
 } page_t;
 
 #if BOARD_SMK37
-/* GLO > EQ: the 16 sliders (geq.h eq_t, half dB), labelled by their centre; the page shows eq_win .. eq_win + 3 */
-#define EQD(l) {l, F_HDB, -EQ_HMAX, EQ_HMAX, 0, 0, 0}
-static const param_desc_t EQ_DESC[EQ_N] = {
-    EQD("40Hz"), EQD("60Hz"), EQD("90Hz"), EQD("130Hz"), EQD("200Hz"), EQD("300Hz"), EQD("440Hz"), EQD("660Hz"),
-    EQD("980Hz"), EQD("1.45k"), EQD("2.2k"), EQD("3.25k"), EQD("4.8k"), EQD("7.2k"), EQD("10.7k"), EQD("16k")};
+/* GLO > EQ: the picked band's TYPE, FREQ, GAIN, Q (peq.h eq_p[eq_cur]); the TYPE column is labelled by the band */
+static const char *const EQT_NAME[EQT_N + 1] = {"OFF", "BELL", "LSHLF", "HSHLF", "LCUT", "HCUT", 0};
+static const param_desc_t EQ_DESC[EQP_N] = {
+    {"TYPE", F_ENUM, 0, EQT_N - 1, EQT_BELL, EQT_NAME, 0},
+    {"FREQ", F_EQHZ, 0, EQ_NF - 1, 68, 0, 0},
+    {"GAIN", F_HDB, -EQ_HMAX, EQ_HMAX, 0, 0, 0},
+    {"Q", F_EQQ, 0, EQ_NQ - 1, 10, 0, 0}};
+static const char *const EQ_BAND_L[EQ_N] = {"BAND 1", "BAND 2", "BAND 3", "BAND 4", "BAND 5"};
 #endif
 
 static const page_t PAGES[] = {
@@ -454,7 +476,7 @@ static const page_t PAGES[] = {
     {"GLOBAL", FAM_GLO, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, G_TUNE}},
     {"MASTER", FAM_GLO, SC_GLOBAL, GR_NONE, {G_DUST, G_DUCK, G_FILT, G_ROLL}},
 #if BOARD_SMK37
-    {"EQ", FAM_GLO, SC_EQ, GR_EQ, {0, 1, 2, 3}},   /* 16-band graphic EQ, the last filter before MASTER (geq.h, ui_geq.c) */
+    {"EQ", FAM_GLO, SC_EQ, GR_EQ, {0, 1, 2, 3}},   /* 5-band parametric EQ, the last filter before MASTER (peq.h, ui_peq.c) */
 #endif
     {"SYSTEM", FAM_GLO, SC_GLOBAL, GR_NONE, {G_MIDI, G_SYNC, G_ROUTE, G_INFO}},
     {"DRUMS", FAM_GLO, SC_GLOBAL, GR_NONE, {G_DRCH, G_DRLVL, G_DRREV, G_DRDLY}},   /* GM kit on MIDI ch 10 */
@@ -511,10 +533,9 @@ static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **
         return 0;
     }
 #if BOARD_SMK37
-    if (pg->scope == SC_EQ) {                       /* the four bands from eq_win; the slot's id is not used */
-        uint32_t band = (eq_win + slot) % EQ_N;
-        *valp = &eq_t[band];
-        return &EQ_DESC[band];
+    if (pg->scope == SC_EQ) {                       /* the picked band's four values; the slot's id is not used */
+        *valp = &eq_p[eq_cur % EQ_N][slot & 3u];
+        return &EQ_DESC[slot & 3u];
     }
 #endif
     if (pg->scope == SC_GLOBAL) {

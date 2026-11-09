@@ -818,12 +818,15 @@ typedef struct {
     uint8_t vel, trs, bup, bdn, lim, klay, boot, padl;  /* bup / bdn: smk_wheel.h bend_*_byte; boot: SNOOP37's BOOT LOGO
                                                          * (0 in a build without it: the default); padl: PAD LIGHT
                                                          * (2.7.2; 0 = 100 %, also in data of earlier builds) */
-    int8_t eq[EQ_N];                                    /* GLO > EQ's 16 sliders, half dB (geq.h eq_t); 0 = flat, also in data of
-                                                         * earlier builds (the object was 12 bytes: the tail reads as zeros) */
+    int8_t geq_old[16];                                 /* (the 16-band graphic EQ's sliders of one test build: not read) */
     uint8_t eqoff;                                      /* EQ OFF (0: on, the default) */
+    int8_t eq[EQ_N][EQP_N];                             /* GLO > EQ's five bands (peq.h eq_p): TYPE + 1 (0: never saved, the
+                                                         * band's default), FREQ, GAIN, Q */
 } smkset_t;
-#define SMKSET_V1 12u                                  /* the object's size before the EQ: still read as it is */
-_Static_assert(__builtin_offsetof(smkset_t, eq) == SMKSET_V1, "the EQ follows the earlier settings");
+#define SMKSET_V1 12u                                  /* the object's size before any EQ: still read as it is */
+#define SMKSET_V2 29u                                  /* .. with the graphic EQ (its EQ OFF kept) */
+_Static_assert(__builtin_offsetof(smkset_t, geq_old) == SMKSET_V1, "the EQ follows the earlier settings");
+_Static_assert(__builtin_offsetof(smkset_t, eq) == SMKSET_V2, "the parametric EQ follows the graphic one's");
 static smkset_t smkset_saved;
 static uint8_t smkset_old_ml[3], smkset_old_have;  /* the MIDI part's last three bytes as read (midi_part_read) */
 static void smkset_fill(smkset_t *s)
@@ -840,8 +843,15 @@ static void smkset_fill(smkset_t *s)
                         ((USBIN_N - 1u - usbin_lvl % USBIN_N) & 7u) << 4);   /* (bits 4..6: USB IN LEVEL, 0 = 0 DB) */   /* (bits 1..3:
                                                  * FADER SCREEN, ORGAN WHEEL; earlier builds read bit 0 alone) */
     s->padl = (uint8_t)(pad_light % PADL_N);
-    for (i = 0; i < EQ_N; i++)
-        s->eq[i] = (int8_t)clamp(eq_t[i], -EQ_HMAX, EQ_HMAX);
+    for (i = 0; i < EQ_N; i++) {
+        uint32_t type, f, q;
+        int32_t e;
+        eq_get(i, &type, &f, &e, &q);
+        s->eq[i][EQP_TYPE] = (int8_t)(type + 1u);
+        s->eq[i][EQP_FREQ] = (int8_t)f;
+        s->eq[i][EQP_GAIN] = (int8_t)e;
+        s->eq[i][EQP_Q] = (int8_t)q;
+    }
     s->eqoff = (uint8_t)(eq_off != 0u);
 #if SNOOP37
     s->boot = (uint8_t)(boot_logo % BOOT_N);
@@ -854,7 +864,7 @@ static void smkset_boot(void)                      /* after the settings (persis
     uint32_t i;
     memset(&s, 0, sizeof s);                       /* (an object from before the EQ is shorter: the rest reads as zeros) */
     n = st_load(OBJ_SMKSET, &s, sizeof s);
-    if ((n == (int)sizeof s || n == (int)SMKSET_V1) && s.magic == SMKSET_MAGIC) {
+    if ((n == (int)sizeof s || n == (int)SMKSET_V1 || n == (int)SMKSET_V2) && s.magic == SMKSET_MAGIC) {
         vel_mode = (uint8_t)(s.vel < VEL_N ? s.vel : VEL_DYNAMIC);
         trs_out = (uint8_t)(s.trs != 0u);
         bend_up = (uint8_t)bend_up_of_byte(s.bup);
@@ -866,10 +876,15 @@ static void smkset_boot(void)                      /* after the settings (persis
         drw_wheel_vib = (uint8_t)((s.klay >> 3) & 1u);
         usbin_lvl = (uint8_t)(((s.klay >> 4) & 7u) < USBIN_N ? USBIN_N - 1u - ((s.klay >> 4) & 7u) : USBIN_N - 1u);
         pad_light = (uint8_t)(s.padl < PADL_N ? s.padl : PADL_100);
-        for (i = 0; i < EQ_N; i++)
-            eq_t[i] = (int16_t)clamp(s.eq[i], -EQ_HMAX, EQ_HMAX);
+        for (i = 0; i < EQ_N; i++) {
+            if (s.eq[i][EQP_TYPE] < 1 || s.eq[i][EQP_TYPE] > (int8_t)EQT_N)
+                continue;                          /* never saved: the band's default */
+            eq_p[i][EQP_TYPE] = (int16_t)(s.eq[i][EQP_TYPE] - 1);
+            eq_p[i][EQP_FREQ] = (int16_t)clamp(s.eq[i][EQP_FREQ], 0, EQ_NF - 1);
+            eq_p[i][EQP_GAIN] = (int16_t)clamp(s.eq[i][EQP_GAIN], -EQ_HMAX, EQ_HMAX);
+            eq_p[i][EQP_Q] = (int16_t)clamp(s.eq[i][EQP_Q], 0, EQ_NQ - 1);
+        }
         eq_off = (uint8_t)(s.eqoff & 1u);
-        eq_dirty = 1;
 #if SNOOP37
         boot_logo = (uint8_t)(s.boot < BOOT_N ? s.boot : 0u);
 #endif

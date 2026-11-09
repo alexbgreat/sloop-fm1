@@ -265,29 +265,35 @@ PRESETS order, 16 a page, then the user presets; on the drum track the drum kits
 short preview; < > step the pages. It closes by itself a moment after the last turn, unless KNOB BANK pinned it.
 FADER BANK closes it (one screen at a time).
 
-## Graphic EQ
+## Parametric EQ
 
-**GLO** (pressed again, or `<` `>` / SELECT from another GLO page) > **EQ**: a 16-band graphic equaliser, the last
+**GLO** (pressed again, or `<` `>` / SELECT from another GLO page) > **EQ**: a 5-band parametric equaliser, the last
 filter of the master bus, in front of the MASTER volume. It shapes everything the synth makes: the headphone / line
-output, the USB recording and the visualiser (the computer's own sound over USB audio out is mixed in after it). The
-bands sit about 0.58 octave apart: 40, 60, 90, 130, 200, 300, 440, 660, 980 Hz, 1.45, 2.2, 3.25, 4.8, 7.2, 10.7, 16 kHz,
-each ±12 dB in 0.5 dB steps. The bells overlap, so the EQ solves them together: equal sliders come out flat across the
-bands, and a slider reads its own dB at its centre (the top octave rolls off a little at the highest settings).
+output, the USB recording and the visualiser (the computer's own sound over USB audio out is mixed in after it).
+
+Each band has a **TYPE**: BELL, LOW SHELF, HIGH SHELF, LOW CUT (high-pass), HIGH CUT (low-pass) or OFF; a **FREQ**,
+20 Hz to 16 kHz in steps of about 1/12 octave (the R40 preferred numbers: 100, 106, 112 … 250 … 1 k … 16 k); a
+**GAIN**, ±12 dB in 0.5 dB steps (BELL and the shelves); and a **Q**, 0.3 to 8 (a bell's width; the shelves' slope;
+the cuts' resonance, 0.71 = no peak). The bands start flat: LOW SHELF 100 Hz, BELL 250 Hz, 1 kHz, 4 kHz, HIGH SHELF
+10 kHz, all at 0 dB.
 
 | Control | On the EQ page |
 |---|---|
-| **pads** | the 16 pads are the 16 bands, low to high, left to right, top row first. A pad picks its band (the dials move to it). Lit by gain: green boost, red cut (brighter = more), a faint white at 0 dB; the band picked is white, the four on the dials carry a blue tint. The pads play nothing here |
-| **SELECT** (K2, or K6 with KNOB LAYOUT = SMK) | scrolls the bands one by one (the dials follow). SELECT is the tempo on the TRACKS page |
-| **K5–K8** (K1–K4 with KNOB LAYOUT = SMK) | the gain of the four bands on the screen (blue, green, yellow, orange), 0.5 dB a detent, faster when turned fast |
-| **OCT−** | the picked band to 0 dB; twice within half a second: every band to 0 dB |
-| **OCT+** | EQ ON / OFF (lit while on). The sliders are kept while it is off; turning a dial turns it back on |
+| **pads 1–5** (top row) | pick a band: lit in its colour (blue, green, yellow, orange, purple), dim while flat or OFF, white while picked. The other pads are dark and the pads play nothing here |
+| **SELECT** (K2, or K6 with KNOB LAYOUT = SMK) | the next / previous band. SELECT is the tempo on the TRACKS page |
+| **K5–K8** (K1–K4 with KNOB LAYOUT = SMK) | the picked band's TYPE, FREQ, GAIN, Q (faster when turned fast) |
+| **OCT−** | the picked band back to its default (flat); twice within half a second: every band |
+| **OCT+** | EQ ON / OFF (lit while on). The bands are kept while it is off; turning a dial turns it back on |
 | `<` `>` | the previous / next GLO page, as always |
 
-The screen shows the 16 bars around a 0 dB line (the four on the dials in the dials' colours, the picked band marked
-below) and the four bands' centres and gains. Bands at 0 dB cost no processing and a flat or OFF EQ leaves the signal
-bit for bit as it was; each band that is moved costs CPU, so watch GLO > SYSTEM's CPU figure with many bands up. A band
-glides to a new gain (12 dB take about 18 ms), no zipper. The sliders are kept with the SMK-37 settings, saved about
-3 seconds after the last change; earlier settings read as flat, EQ ON.
+The screen shows the live spectrum of the mix (grey bars; from 20 Hz to the visualiser's 11 kHz, the lowest octave
+coarse), the EQ's response curve over it (white; the picked band's own curve in its colour), 0 dB with lines at ±6
+and ±12 dB, grid lines at 100 Hz, 1 kHz and 10 kHz, and each band as a handle at its FREQ and GAIN (a cut at its
+−3 dB point). Every change is smooth: FREQ, GAIN and Q glide a step at a time (a full GAIN swing in about 18 ms), a
+new TYPE fades the old filter out and the new one in (about 6 ms each), EQ OFF fades out. A band that is OFF, or a
+bell or shelf at 0 dB, costs no processing, and a flat or OFF EQ leaves the signal bit for bit as it was. The bands
+are kept with the SMK-37 settings, saved about 3 seconds after the last change; earlier settings read as flat (EQ OFF
+is kept).
 
 ## Power-on and special combos (same as SLOOP on FM-1)
 
