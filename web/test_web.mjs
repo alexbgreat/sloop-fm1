@@ -17,7 +17,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { blockCount, logicalImage, productOf, validateStockPackage, identifyStockPackage, STOCK_SMK } from "./fm1pkg.js";
-import { Updater, pack7, unpack7, sameKeyboard, OUR_LOADER, OTHER_SMK, PORT_RE, stockFit, packageBoard, isStockPackage, regionTable, FM1_STOCK_MSG } from "./fm1ota.js";
+import { Updater, pack7, unpack7, sameKeyboard, OUR_LOADER, OTHER_SMK, PORT_RE, stockFit, packageBoard, isStockPackage, regionTable, FM1_STOCK_MSG, timing } from "./fm1ota.js";
+
+// the mock device's reply latency and fm1ota.js's waits for the device run at this fraction of real time
+// (WEB_TIME_SCALE=1: as on the hardware); the order of events stays the same, only the waits get shorter
+const TIME_SCALE = Number(process.env.WEB_TIME_SCALE ?? 0.05);
+timing.scale = TIME_SCALE;
 
 let failed = 0;
 const ok = (cond, what) => { console.log(`${what.padEnd(64)} ${cond ? "ok" : "FAIL"}`); if (!cond) failed++; };
@@ -36,6 +41,7 @@ const E = vm.runInNewContext(proto + `
    mixer, GM_DRUM, drumName, parseNotes, fmtValue, F, DRUM_LANES, LV_NAMES, emptyDrum, lockable, MICRO, FC, fillGet, fillSet, pack7, unpack7,
    loudDb, matchGains, withGain, LEVEL_MIN, backupCapture, backupRestore, backupObjects, b64enc, b64dec, FM6, KIT, kitPad, kitZones, kitLen, kitBytes, kitFit, kitSplit, kitLaneOf, kitPlace, zipRead, ROLL, SMF, ARR, mockSettings, fm6CartWrite, fm6CartPreset, fm6CartSlots, fm6CartPresets, DSYN, DSYN_MOCK_NAMES, DSYN_MOCK_KITS, DAW, SetGate, bkProjFormat, bkDevFormat, bkFwAtLeast, THEME, FM1_PORT_ED: FM1_PORT, fm1Ports, LOOP, LIVE, LVX, SONGF, songCapture, songLoad, songObjects })`,
 { setTimeout, clearTimeout, setInterval, clearInterval, console, TextEncoder, TextDecoder, Blob, Response, DecompressionStream });
+{ const mk = E.makeMockDevice; E.makeMockDevice = (o = {}) => mk({ latency: TIME_SCALE, ...o }); }
 
 async function editorMock() {
   const m = E.makeMockDevice();
@@ -269,7 +275,7 @@ async function editorLibrarian() {
 
 async function editorLive() {
   const C = E.CMD;
-  const { m, link, rq, sent, ev, done } = attachMock({ watchMs: 250 });
+  const { m, link, rq, sent, ev, done } = attachMock({ watchMs: 250, latency: 1 });   /* (real time: pushes race the replies, WATCH lapses by the clock) */
   const info = E.parse[C.INFO](await rq(E.req.info()));
   ok(await E.startWatch(rq), "live: WATCH on");
 

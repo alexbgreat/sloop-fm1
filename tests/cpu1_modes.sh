@@ -38,7 +38,7 @@ split() {    # $1 = the mode's name, the rest its env: every split of the units 
 echo "== the render split, the second core as the host double has it"
 golden "CORES=1 (the job inline, at the wait)" CORES=1
 golden "CORES=2 (a thread)" CORES=2
-golden "CORES=2 CHAOS=7 (a slow, erratic thread)" CORES=2 CHAOS=7
+golden "CORES=2 CHAOS=7 CHAOS_EVERY=8 (a slow, erratic thread; on every job: 4 min)" CORES=2 CHAOS=7 CHAOS_EVERY=8
 golden "CORES=2 CPU1_TIMEOUT_AT=300 (a lost job: the fallback, then one core)" CORES=2 CPU1_TIMEOUT_AT=300
 golden "CPU1_UNITS=0 (no split)" CORES=1 CPU1_UNITS=0
 golden "CORES=2 CPU1_UNITS=15 (every unit that may go, goes)" CORES=2 CPU1_UNITS=15

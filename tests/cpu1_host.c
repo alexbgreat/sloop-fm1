@@ -7,8 +7,11 @@
  *   CORES=2             the job runs on a POSIX thread, started at the first cpu1_run; cpu1_wait blocks for
  *                       it. Built with -fsanitize=thread, every shared access not in the plan's list shows up
  *   CHAOS=N             with CORES=2: the thread sleeps 0..10 N us before and after each job (seeded by N),
- *                       so nothing may depend on how fast core 1 is
- *   CPU1_TIMEOUT_AT=K   the K-th job is lost: the double never runs it, cpu1_wait returns -1 and core 1 is
+ *                       so nothing may depend on how fast core 1 is (on Linux with no timer slack: a sleep
+ *                       is the time asked, not 50 us more)
+ *   CHAOS_EVERY=K       with CHAOS: only one job in K (at random, seeded) is slowed; 1 (default) every job.
+ *                       For the long runs (tests/cpu1_modes.sh, the golden renders: a million jobs)
+ *   CPU1_TIMEOUT_AT=K  the K-th job is lost: the double never runs it, cpu1_wait returns -1 and core 1 is
  *                       held from then on (cpu1_on 0, cpu1_run 0): the caller's fallback path, once
  *   CPU1_UNITS=mask     the render units handed to core 1 (cpu1.h cpu1_units): 0 none, 15 all that may go
  * cpu1_ticks() is 0 here: the load figures (fx.c cpu1_load_half) are the device's.
@@ -16,9 +19,12 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 static struct {
-    int init, mode, chaos, on, pending;                  /* pending: a job handed over and not waited yet */
+    int init, mode, chaos, chaos_every, on, pending;                 /* pending: a job handed over and not waited yet */
     uint32_t jobs, timeout_at, timeouts, seed;
     cpu1_job_t fn;
     uint32_t arg;
@@ -33,9 +39,14 @@ static uint32_t c1h_rand(void) { c1h.seed = c1h.seed * 1664525u + 1013904223u; r
 static void *cpu1_host_thread(void *p)
 {
     (void)p;
+#ifdef __linux__
+    if (c1h.chaos)
+        prctl(PR_SET_TIMERSLACK, 1UL);                   /* (the default 50 us of slack on each sleep: minutes) */
+#endif
     for (;;) {
         cpu1_job_t fn;
         uint32_t arg;
+        int slow;
         pthread_mutex_lock(&c1h.mu);
         while (!c1h.go)
             pthread_cond_wait(&c1h.cv, &c1h.mu);
@@ -43,10 +54,11 @@ static void *cpu1_host_thread(void *p)
         fn = c1h.fn;
         arg = c1h.arg;
         pthread_mutex_unlock(&c1h.mu);
-        if (c1h.chaos)
+        slow = c1h.chaos && (c1h.chaos_every <= 1 || c1h_rand() % (uint32_t)c1h.chaos_every == 0u);
+        if (slow)
             usleep(c1h_rand() % (10u * (uint32_t)c1h.chaos + 1u));
         fn(arg);
-        if (c1h.chaos)
+        if (slow)
             usleep(c1h_rand() % (10u * (uint32_t)c1h.chaos + 1u));
         pthread_mutex_lock(&c1h.mu);
         c1h.done = 1;
@@ -67,6 +79,8 @@ static void cpu1_host_init(void)
     e = getenv("CHAOS");
     c1h.chaos = e ? atoi(e) : 0;
     c1h.seed = (uint32_t)c1h.chaos * 7919u + 1u;
+    e = getenv("CHAOS_EVERY");
+    c1h.chaos_every = e ? atoi(e) : 1;
     e = getenv("CPU1_TIMEOUT_AT");
     c1h.timeout_at = e ? (uint32_t)atoi(e) : 0;
     e = getenv("CPU1_UNITS");

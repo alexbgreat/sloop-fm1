@@ -9,7 +9,9 @@
 const HS_QUERY = [0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7];
 const UPGRADE = [0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7];
 const MAXDATA = 512;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// the waits for the device (its restarts, the pacing of the replies); web/test_web.mjs runs them faster
+export const timing = { scale: 1 };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms * timing.scale));
 const IS_OTA = (id) => /^ota-/i.test(id.model);
 // the update loader of SLOOP / Felucca packages ("ota-FM-1_9XX", "ota-SMK-37 Pro_9XX"; the SMK ports also under the
 // Elite's and the MKE-P37's model name, Makkuro37 _7XX). A device left in the update mode of another firmware (the

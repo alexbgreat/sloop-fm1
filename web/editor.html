@@ -3959,7 +3959,7 @@ function makeMockDevice(opt = {}) {
         const ra = r ? r.slice(5, -1) : [];
         if (r && ((f.cmd === CMD.SET && f.a[0] === 1 && f.a[1] === G_ENGSEL) || f.cmd === CMD.PRESET
           || (f.cmd === CMD.PROJECT && f.a[0] === 0 && ra[2]) || (f.cmd === CMD.UP_LOAD && !ra[1]))) reloadPush();
-      }, f.cmd === CMD.SMP_ERASE ? 900 : f.cmd === CMD.SMP_BEGIN ? 120 : flash ? 150 : f.cmd === CMD.SMP_WRITE ? 25 + Math.random() * 10 : 4 + Math.random() * 12);
+      }, (opt.latency ?? 1) * (f.cmd === CMD.SMP_ERASE ? 900 : f.cmd === CMD.SMP_BEGIN ? 120 : flash ? 150 : f.cmd === CMD.SMP_WRITE ? 25 + Math.random() * 10 : 4 + Math.random() * 12));   /* opt.latency: the tests' time scale */
     },
   };
   /* WATCH ends by itself watchMs after the last request */
