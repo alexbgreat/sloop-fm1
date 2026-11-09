@@ -193,8 +193,21 @@ int main(void)
                     peak_out = abs(l[i]);
             }
         }
-        printf("peq:   random bands under noise: peak in %.0f, out %.0f\n", peak_in, peak_out);
-        check(!bad && peak_out < 40 * peak_in, "random bands moving under loud noise: bounded, channels equal");
+        {   /* five bells at +12 dB on one frequency are +60 dB (x1000) and a Q-8 cut peaks ~+18 dB: what is legitimate.
+             * Stable: the output stays below the states' limit, and with the input gone it dies away */
+            int32_t last = 0;
+            for (n = 0; n < (uint32_t)(4 * FSR / BLK); n++) {
+                memset(l, 0, sizeof l), memset(r, 0, sizeof r);
+                eq_process(l, r, BLK);
+            }
+            for (i = 0; i < BLK; i++)
+                if (abs(l[i]) > last)
+                    last = abs(l[i]);
+            printf("peq:   random bands under noise: peak in %.0f, out %.0f; 4 s after the input stops %d\n", peak_in,
+                   peak_out, last);
+            check(!bad && peak_out < (double)EQ_XMAX * 4 && last <= 1,
+                  "random bands moving under loud noise: stable (dies away), channels equal");
+        }
     }
     {   /* a 20 Hz bell +12 and a resonant cut: the tail is silent after the input stops */
         int32_t last = 0;

@@ -27,7 +27,8 @@ enum { EQP_TYPE, EQP_FREQ, EQP_GAIN, EQP_Q, EQP_N };   /* a band's four values (
 #define EQ_HMAX 24                               /* GAIN: -24 .. +24 half dB */
 #define EQ_FRAC 8                                /* the states' fractional bits */
 #define EQ_SMAX ((int64_t)1 << 30)               /* a state's limit (+-2^22 in samples) */
-#define EQ_XMAX ((int32_t)1 << 22)               /* an input sample's (128 x full scale) */
+#define EQ_XMAX (((int32_t)1 << 22) - 1)         /* an input sample's (128 x full scale; -2^22 itself would read as a
+                                                  * ROM address to tools/build.py's check) */
 #define EQ_WSTEP 32u                             /* the fade: 16 / 128 a block (8 blocks, ~6 ms) */
 
 typedef struct {
@@ -129,12 +130,13 @@ static void eq_calc(eqc_t *c, uint32_t type, uint32_t f, int32_t e, uint32_t q)
 
 #define EQ_M(a, b) ((int64_t)(int32_t)(a) * (int32_t)(b))   /* 32 x 32 -> 64: one multiply */
 static inline int32_t eq_sat(int64_t v) { return (int32_t)(v < -EQ_SMAX ? -EQ_SMAX : v > EQ_SMAX ? EQ_SMAX : v); }
-/* one channel through one band; w: the fade (128 = all of the filter) */
-static void eq_run(const eqc_t *c, int32_t *s, int32_t *x, uint32_t n, uint32_t w)
+/* one channel through one band; w0 -> w1: the fade over the block, sample by sample (128 = all of the filter) */
+static void eq_run(const eqc_t *c, int32_t *s, int32_t *x, uint32_t n, uint32_t w0, uint32_t w1)
 {
     const int32_t a1 = c->a1, a2 = c->a2, a3 = c->a3, m0 = c->m0, m1 = c->m1, m2 = c->m2;
     const int64_t rnd = (int64_t)1 << 27, orn = (int64_t)1 << (27 + EQ_FRAC);
-    int32_t ic1 = s[0], ic2 = s[1];
+    const int fade = w0 < 128u || w1 < 128u;
+    int32_t ic1 = s[0], ic2 = s[1], wq = (int32_t)(w0 << 16), dw = n ? (((int32_t)w1 - (int32_t)w0) << 16) / (int32_t)n : 0;
     uint32_t i;
     for (i = 0; i < n; i++) {
         int32_t xi = eq_clamp(x[i], -EQ_XMAX, EQ_XMAX), xs = xi << EQ_FRAC, v3 = eq_sat((int64_t)xs - ic2), v1, v2, y;
@@ -143,7 +145,11 @@ static void eq_run(const eqc_t *c, int32_t *s, int32_t *x, uint32_t n, uint32_t 
         ic1 = eq_sat(2 * (int64_t)v1 - ic1);
         ic2 = eq_sat(2 * (int64_t)v2 - ic2);
         y = (int32_t)((EQ_M(m0, xs) + EQ_M(m1, v1) + EQ_M(m2, v2) + orn) >> (28 + EQ_FRAC));
-        x[i] = w >= 128u ? y : xi + (int32_t)(((int64_t)(y - xi) * (int32_t)w) >> 7);
+        if (fade) {
+            wq += dw;
+            y = xi + (int32_t)(((int64_t)(y - xi) * wq) >> 23);
+        }
+        x[i] = y;
     }
     s[0] = ic1, s[1] = ic2;
 }
@@ -156,37 +162,38 @@ static void eq_process(int32_t *l, int32_t *r, uint32_t n)
     uint32_t b, live = 0;
     for (b = 0; b < EQ_N; b++) {
         eqb_t *s = &eq_b[b];
-        uint32_t tt, tf, tq;
+        uint32_t tt, tf, tq, w0 = s->w, w1;
         int32_t te;
-        int flat;
         eq_get(b, &tt, &tf, &te, &tq);
         if (eq_off)
             tt = EQT_OFF;
-        flat = !s->w || eq_flat(s->type, s->e);
         if (s->type != tt) {                                /* a new TYPE: fade the old one out, then start the new */
-            if (!flat && s->w > EQ_WSTEP / 2u) {
-                s->w = (uint8_t)(s->w - EQ_WSTEP / 2u);
-            } else {
-                s->type = (uint8_t)tt, s->f = (uint8_t)tf, s->q = (uint8_t)tq, s->e = (int8_t)te, s->w = 0;
-                s->s[0] = s->s[1] = s->s[2] = s->s[3] = 0;
-                eq_calc(&s->c, tt, tf, te, tq);
-            }
+            if (eq_flat(s->type, s->e))
+                w0 = 0;                                     /* (nothing to fade) */
+            w1 = w0 > EQ_WSTEP / 2u ? w0 - EQ_WSTEP / 2u : 0u;
         } else if (tt != EQT_OFF) {                         /* the same TYPE: a step a block towards the dials */
             int32_t f = eq_toward(s->f, (int32_t)tf), q = eq_toward(s->q, (int32_t)tq), e = eq_toward(s->e, te);
             if (f != s->f || q != s->q || e != s->e) {
                 s->f = (uint8_t)f, s->q = (uint8_t)q, s->e = (int8_t)e;
                 eq_calc(&s->c, tt, (uint32_t)f, e, (uint32_t)q);
             }
-            if (s->w < 128u)
-                s->w = (uint8_t)(s->w + EQ_WSTEP / 2u > 128u ? 128u : s->w + EQ_WSTEP / 2u);
+            w1 = w0 + EQ_WSTEP / 2u > 128u ? 128u : w0 + EQ_WSTEP / 2u;
+        } else {
+            w1 = 0;
         }
-        if (!s->w || eq_flat(s->type, s->e)) {              /* out of the path: from rest the next time */
+        if ((w0 || w1) && !eq_flat(s->type, s->e)) {       /* in the path, fading from w0 to w1 across the block */
+            eq_run(&s->c, s->s, l, n, w0, w1);
+            eq_run(&s->c, s->s + 2, r, n, w0, w1);
+            live++;
+        } else {                                            /* out of the path: from rest the next time */
             s->s[0] = s->s[1] = s->s[2] = s->s[3] = 0;
-            continue;
         }
-        eq_run(&s->c, s->s, l, n, s->w);
-        eq_run(&s->c, s->s + 2, r, n, s->w);
-        live++;
+        s->w = (uint8_t)w1;
+        if (s->type != tt && !w1) {                         /* faded out: the new TYPE, from rest */
+            s->type = (uint8_t)tt, s->f = (uint8_t)tf, s->q = (uint8_t)tq, s->e = (int8_t)te;
+            s->s[0] = s->s[1] = s->s[2] = s->s[3] = 0;
+            eq_calc(&s->c, tt, tf, te, tq);
+        }
     }
     eq_live = (uint8_t)live;
 }
