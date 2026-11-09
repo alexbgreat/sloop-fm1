@@ -27,8 +27,8 @@ enum { EQP_TYPE, EQP_FREQ, EQP_GAIN, EQP_Q, EQP_N };   /* a band's four values (
 #define EQ_HMAX 24                               /* GAIN: -24 .. +24 half dB */
 #define EQ_FRAC 8                                /* the states' fractional bits */
 #define EQ_SMAX ((int64_t)1 << 30)               /* a state's limit (+-2^22 in samples) */
-#define EQ_XMAX (((int32_t)1 << 22) - 1)         /* an input sample's (128 x full scale; -2^22 itself would read as a
-                                                  * ROM address to tools/build.py's check) */
+#define EQ_XMAX ((int32_t)1 << 21)               /* an input sample's (64 x full scale; -2^22 .. -3 x 2^20 would read as
+                                                  * ROM addresses to tools/build.py's check) */
 #define EQ_WSTEP 32u                             /* the fade: 16 / 128 a block (8 blocks, ~6 ms) */
 
 typedef struct {
