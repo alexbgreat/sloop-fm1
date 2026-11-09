@@ -4,9 +4,10 @@
  *
  * Partials: nine sines per voice at the classic drawbar footages, 16' 5 1/3' 8' 4' 2 2/3' 2'
  * 1 3/5' 1 1/3' 1' (0.5, 1.5, 1, 2, 3, 4, 5, 6, 8 times the note), each with a level 0..8
- * (about 3 dB a step). One shared sine table (plain lookup), one free-running integer phase
- * per partial: a note starts wherever its wheels are, as on the real generators. A partial
- * above ~6 kHz folds back an octave (as the top of a tonewheel set does), so nothing aliases.
+ * (about 3 dB a step). One shared sine table, interpolated (sine_i: a plain lookup left an error
+ * floor ~57 dB down, heard as hiss), one free-running integer phase per partial: a note starts
+ * wherever its wheels are, as on the real generators. A partial above ~6 kHz folds back an
+ * octave (as the top of a tonewheel set does), so nothing aliases.
  * Partials at level 0 are skipped (their phase still runs).
  *
  * Registration: 8 knobs cannot hold 9 drawbars, so REG picks one of 16 drawbar settings
@@ -28,8 +29,8 @@
  * gains and increments: no delay line, no per-sample cost. OFF fades it out and stops them.
  *
  * Envelope: an organ gate (the presets set A 0, S 127, a short R); the track ADSR still applies.
- * Cost: per sample and partial one table lookup and a multiply-add (a gain ramp only for the
- * partials whose gain moved: percussion, rotary, knobs); the bar levels, the rotor and the
+ * Cost: per sample and partial one interpolated table lookup and a multiply-add (a gain ramp only
+ * for the partials whose gain moved: percussion, rotary, knobs); the bar levels, the rotor and the
  * percussion run once per block. State: the per-track rotor and bar gains (drw_trk) and the
  * per-voice phases / gains (drw_vc) live here, indexed by part and voice; voice_t is unused. */
 #define DRW_NP 9                 /* partials */
@@ -360,14 +361,14 @@ static void drawbar_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
         if (g0 == g1) {
             for (i = 0; i < n; i++) {
                 ph += inc;
-                acc[i] += (SINE[ph >> 22] * g1) >> 15;
+                acc[i] += (sine_i(ph) * g1) >> 15;
             }
         } else {                                        /* gain ramp over the block (CTL = 32) */
             int32_t gq = g0 << 5, dg = g1 - g0;
             for (i = 0; i < n; i++) {
                 ph += inc;
                 gq += dg;
-                acc[i] += (SINE[ph >> 22] * (gq >> 5)) >> 15;
+                acc[i] += (sine_i(ph) * (gq >> 5)) >> 15;
             }
         }
         V->ph[k] = ph;
