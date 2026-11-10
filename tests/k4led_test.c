@@ -2,6 +2,7 @@
 #define UI_PAGES_HARNESS_ONLY 1
 #include "ui_pages_test.c"
 static uint8_t smk_fbank, smk_fbank_new;           /* (ui_input.c, SMK build) */
+static char knob_digit(uint32_t role) { return role == EN_SELECT ? '2' : '5'; }   /* (as tests/fbank_test.c; gcc 14+ refuses an implicit one) */
 #include "../firmware/src/ui_pick.c"
 #include "../firmware/src/ui_fbank.c"
 #include "../firmware/src/ui_padgrid.c"

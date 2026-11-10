@@ -61,6 +61,17 @@
 static uint32_t fm1_lcd_timeouts;
 static uint8_t fm1_lcd_cur_baud = 4u;
 
+/* (2.7.2) drive the backlight (PA2, active low) on, on its own. SLOOP USB RESCUE needs it low before the early key
+ * scan (recovery.c), which runs before fm1_lcd_hw_init: the HAL register access stays in hal/ (a hal helper).
+ * The SMK-37 has no such line (its init never drove PA2): nothing there. */
+FM1_INLINE void fm1_lcd_backlight_on(void)
+{
+#if !BOARD_SMK37
+    FM1_LCD_PA_OUT &= ~FM1_LCD_BL;
+    FM1_LCD_PA_DIR &= ~FM1_LCD_BL;
+#endif
+}
+
 FM1_INLINE void fm1_lcd_hw_init(void)
 {
 #if BOARD_SMK37
@@ -72,8 +83,7 @@ FM1_INLINE void fm1_lcd_hw_init(void)
     FM1_LCD_PC_OUT &= ~FM1_PADLED_DO;     /* the LED line idles low (latch) */
     FM1_LCD_PC_DIR &= ~FM1_PADLED_DO;
 #else
-    FM1_LCD_PA_OUT &= ~FM1_LCD_BL;
-    FM1_LCD_PA_DIR &= ~FM1_LCD_BL;
+    fm1_lcd_backlight_on();
     FM1_LCD_IOMAP_CON1 |= FM1_LCD_GROUP_B;
     FM1_LCD_CS_OUT |= FM1_LCD_CS;
     FM1_LCD_PC_OUT &= ~(FM1_LCD_DC | FM1_LCD_CLK | FM1_LCD_DO);

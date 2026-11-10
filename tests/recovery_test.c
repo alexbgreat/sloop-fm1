@@ -16,7 +16,7 @@ static uint32_t input_buttons, stop_at_retry;
 static jmp_buf exit_loop;
 #define FM1_TICKS_PER_US 24u
 #define FL_FAR(x) x
-#define FL_JEDEC_OK(id) ((id) == 0x856014u)   /* as firmware/hal/fm1_flash.h */
+#include "../firmware/hal/fm1_flash_id.h"
 #define C_BLACK 0
 #define C_WHITE 65535
 #define FONT_S font
@@ -42,7 +42,9 @@ static int ota_session(void)
     return -13;  /* failed update must leave rescue available for another try */
 }
 static void fm1_input_init(void) { fm1_in.buttons = 0; }
-static void fm1_input_scan(void) { scans++; ticks += 24000u; fm1_in.buttons = input_buttons; }
+static unsigned keys_on, scans_before_on;
+#define RECOVERY_KEYS_ON() (keys_on++, scans_before_on += scans)   /* (2.7.2: PA2 driven low before the scan) */
+static void fm1_input_scan(void) { scans++; ticks += 24000u; fm1_in.buttons = keys_on ? input_buttons : 0u; }
 static uint32_t fl_jedec_ram(void) { jedec_reads++; return jedec; }
 static void lcd_init(void) { lcd_calls++; }
 static void lcd_fill(int x, int y, int w, int h, int c) { (void)x;(void)y;(void)w;(void)h;(void)c; }
@@ -69,6 +71,7 @@ int main(void)
     assert(bootguard_manual(1) && !bootguard_manual(0) && !bootguard_manual(2) && !bootguard_manual(3));
 
     input_buttons = 1; assert(recovery_key());
+    assert(keys_on == 1 && scans_before_on == 0);   /* (2.7.2) the matrix powered (PA2 low) before the first scan */
     input_buttons = 3; assert(!recovery_key());
     input_buttons = 0; assert(!recovery_key());
     assert(scans >= 150);
@@ -98,6 +101,14 @@ int main(void)
     assert(jedec_reads == 1 && lcd_calls == 1);
     assert(services == 7 && sessions == 2);  /* idle startup starts no update */
     assert(bootguard_begin(&bootguard) == BOOT_ROM);
-    puts("recovery: boot failures, manual key, timer wrap, polled USB during OTA, retry, flash refusal and ROM fallback passed");
+    /* the flash parts: the Puya P25Q80 and the UC25HQ80 known, anything else not (and recovery_main reads it) */
+    assert(FL_JEDEC_OK(0x856014u) && FL_JEDEC_OK(0xB36014u) && !FL_JEDEC_OK(0xEF4014u) && !FL_JEDEC_OK(0u) && !FL_JEDEC_OK(0xFFFFFFu));
+    jedec = 0xB36014u; flash_ok = 0; recovery_active = 0; retries = 0; stop_at_retry = 3;
+    if (!setjmp(exit_loop)) recovery_main();
+    assert(flash_ok);
+    jedec = 0xEF4014u; flash_ok = 1; retries = 0; stop_at_retry = 3;
+    if (!setjmp(exit_loop)) recovery_main();
+    assert(!flash_ok);
+    puts("recovery: boot failures, manual key, timer wrap, polled USB during OTA, retry, flash refusal and ROM fallback, the UC25HQ80 flash known passed");
     return 0;
 }

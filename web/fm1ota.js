@@ -117,6 +117,11 @@ class Link {
     }
     return this.q.shift() || null;
   }
+  // detach the callback only; do NOT close the MIDI ports. find()/probe() reuse the same input across
+  // several output candidates (e.g. the always-present "Microsoft GS Wavetable Synth" is probed before
+  // the FM-1's own output), and closing the input between candidates raced its re-open and broke the
+  // handshake with a device that is present ("FM-1 not found" with the port listed). Leaving ports open
+  // is the long-standing behaviour.
   close() { this.input.onmidimessage = null; }
 }
 
@@ -146,16 +151,18 @@ export class Updater {
 
   say(t) { if (!this.said.has(t)) { this.said.add(t); this.log(t); } }   // each port line once
 
-  // every in/out pair with the same port name that answers the handshake
-  async find(filter) {
-    const outs = [...this.access.outputs.values()];
-    for (const input of this.access.inputs.values()) {
-      if (input.state === "disconnected") continue;
-      const name = input.name || "";
-      if (!this.all && !PORT_RE.test(name)) { this.say(`port "${name}": not probed`); continue; }   // never probe other gear
-      const output = outs.find((o) => o.name === input.name) ||
-        outs.find((o) => portBase(o.name || "") === portBase(name)) || (outs.length === 1 ? outs[0] : null);
-      if (!output) { this.say(`port "${name}": no output of that name`); continue; }
+  // one input against its candidate outputs: the same name, the same base name ("MIDIIN2 (X)" / "MIDIOUT2 (X)"), or
+  // one name containing the other (input "Felucca", output "MIDIOUT2 (Felucca)": 2.8), so unrelated outputs like
+  // "Microsoft GS Wavetable Synth" are not probed; else a lone output, or (deep: the loader hunt) any live one. A pair
+  // counts only when it answers the FM-1 handshake and passes the filter.
+  async probe(input, outs, filter, deep = false) {
+    const name = input.name || "";
+    const live = outs.filter((o) => o.state !== "disconnected");
+    const named = live.filter((o) => o.name === name || portBase(o.name || "") === portBase(name) ||
+      (name && o.name && (o.name.includes(name) || name.includes(o.name))));
+    const cands = named.length ? named : deep || live.length === 1 ? live : [];
+    if (!cands.length) { this.say(`port "${name}": no output of that name`); return null; }
+    for (const output of cands) {
       try { await input.open(); await output.open(); } catch (_) { this.say(`port "${name}": cannot open (in use?)`); continue; }
       const link = new Link(input, output);
       const id = await handshake(link, 2);
@@ -166,16 +173,38 @@ export class Updater {
     return null;
   }
 
+  // the FM-1 (or its update loader) among the MIDI ports: PORT_RE's names first (opts.all: every port), other gear is
+  // never touched. With deep=true (hunting the re-enumerated update loader only, 2.8), the remaining ports are probed
+  // too and accepted SOLELY when they answer the FM-1 handshake (other gear gives no valid identity): Windows often
+  // names the loader generically ("USB MIDI Device"), so a name filter alone misses it and it seems "not to appear"
+  async find(filter, deep = false) {
+    const outs = [...this.access.outputs.values()];
+    const inputs = [...this.access.inputs.values()].filter((i) => i.state !== "disconnected");
+    const named = (i) => this.all || PORT_RE.test(i.name || "");
+    for (const input of inputs) {
+      if (!named(input)) continue;
+      const dev = await this.probe(input, outs, filter);
+      if (dev) return dev;
+    }
+    for (const input of inputs) {
+      if (named(input)) continue;
+      if (!deep) { this.say(`port "${input.name || ""}": not probed`); continue; }
+      const dev = await this.probe(input, outs, filter, true);
+      if (dev) return dev;
+    }
+    return null;
+  }
+
   // the MIDI inputs there are, for the "not found" message: " (MIDI: a, b)" (a port the installer skipped shows)
   seen() {
     const names = [...this.access.inputs.values()].filter((p) => p.state !== "disconnected").map((p) => p.name || "?");
     return names.length ? ` (MIDI: ${names.join(", ")})` : " (MIDI: none)";
   }
 
-  async waitFor(filter, ms) {
+  async waitFor(filter, ms, deep = false) {
     const end = Date.now() + ms;
     while (Date.now() < end) {
-      const dev = await this.find(filter);
+      const dev = await this.find(filter, deep);
       if (dev) return dev;
       await sleep(1000);
     }
@@ -232,18 +261,18 @@ export class Updater {
     if (!s1.finished && !jumped) throw fail(s1.lost ? "lost" : "stopped", `the device ${s1.lost ? "was disconnected" : "stopped"} after ${s1.served} requests: nothing was written`);
     step("loader");
     await sleep(3000);
-    const ota = await this.waitFor(IS_OTA, jumped ? 15000 : 30000);
+    const ota = await this.waitFor(IS_OTA, jumped ? 15000 : 60000, true);
     if (jumped && !(ota && OUR_LOADER(ota.id) && sameKeyboard(ota.id.model.replace(/^ota-/i, ""), dev.id.model))) {
       if (ota) ota.link.close();
       throw fail(ota ? "foreign" : "lost", ota ? `the device restarted into the update mode of another firmware (${ota.id.text}): nothing was written`
         : "the device was disconnected after 0 requests: nothing was written", ota ? ota.id.text : "");
     }
-    if (!ota) throw fail("noloader", "the update loader did not appear. Replug the USB cable and press Install again: the device stays in update mode until it is finished.");
+    if (!ota) throw fail("noloader", "the update loader did not appear. Replug the USB cable and press Install again: the device stays in update mode until it is finished.", this.seen());
     const s2 = await this.write(ota, image, step);
     if (!s2.finished) throw fail(s2.lost ? "lost" : "stopped", `the loader ${s2.lost ? "was disconnected" : "stopped"} after ${s2.served} requests. Replug and press Install again to resume.`);
     step("reboot");
     await sleep(3000);
-    const back = await this.waitFor((id) => !IS_OTA(id), 40000);
+    const back = await this.waitFor((id) => !IS_OTA(id), 60000);
     if (!back) throw fail("noreturn", "the device did not come back: power-cycle it");
     back.link.close();
     if (back.id.text !== product) throw fail("mismatch", `installed, but the device reports ${back.id.text}`, back.id.text);
@@ -267,7 +296,7 @@ export class Updater {
   // written; the loader's model must match it (or opts.product's) by install()'s rule (the same model, or with
   // opts.anyModel another model of the same keyboard), and without either identity nothing is written
   async resume(image, onStep, opts = {}) {
-    const ota = await this.find(IS_OTA);
+    const ota = await this.find(IS_OTA, true);
     if (!ota) return false;
     if (!OUR_LOADER(ota.id) && !opts.product) {
       ota.link.close();
@@ -286,7 +315,7 @@ export class Updater {
     if (opts.product) {
       step("reboot");
       await sleep(3000);
-      const back = await this.waitFor((id) => !IS_OTA(id), 40000);
+      const back = await this.waitFor((id) => !IS_OTA(id), 60000);
       if (!back) throw fail("noreturn", "the FM-1 did not come back after the write: power-cycle it");
       back.link.close();
       if (back.id.text !== opts.product) throw fail("mismatch", `written, but the FM-1 reports ${back.id.text}`, back.id.text);

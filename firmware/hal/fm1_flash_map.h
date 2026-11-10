@@ -17,7 +17,7 @@
  * ID: 0xeb6014"). The driver uses only generic SPI NOR commands (9F, 05/35, 06, 20, 02, 0B). */
 #define FL_JEDEC_OK(id) ((id) == 0xEB6014u || (id) == 0x856014u)
 #else
-#define FL_JEDEC_OK(id) ((id) == 0x856014u)
+#include "fm1_flash_id.h"                   /* the FM-1: the Puya P25Q80 and the UC25HQ80 (SLOOP 2.8.5) */
 #endif
 
 #if BOARD_SMK37

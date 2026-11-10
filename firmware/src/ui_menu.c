@@ -2,8 +2,8 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* SLOOP menu (HOME held), in sections as the pages are (2.4): SCREEN (COLOR, ZOOM, KNOB ACCEL (2.7); SMK-37: KNOB
  * LAYOUT instead of KNOB ACCEL; SNOOP37: BOOT LOGO), LIGHTS (LIGHTS, KEYS, NOTES; SMK-37: PAD LIGHT), AUDIO (LOWCUT, USB AUDIO, USB SERIAL (FELUCCA_CDC builds
- * only), USB RATE (2.7 beta); SMK-37: LIMITER), SMK-37: PLAY (KEY VELOCITY, BEND UP, BEND DOWN, KNOB ACCEL), MIDI (TRS
- * MIDI OUT, MODE, CHANNEL, LOCAL), DAW (CC MAP, KNOBS, EDIT MAP, RESET MAP), SYSTEM (2ND CORE (dualcore), HARDWARE
+ * only), USB RATE (2.7 beta), FILTER RESO (2.7.2); SMK-37: LIMITER, FILTER RESO in SEQ), SMK-37: PLAY (KEY VELOCITY, BEND UP, BEND DOWN, KNOB ACCEL), MIDI (TRS
+ * MIDI OUT, MODE, CHANNEL, LOCAL), DAW (CC MAP, KNOBS, EDIT MAP, RESET MAP), SEQ (2.7.1: STEP ADVANCE, DRUM PREVIEW), SYSTEM (2ND CORE (dualcore), HARDWARE
  * CALIBRATION, LEARN CLEAR (2.6), ABOUT).
  * SELECT goes to the section before / after (stopping at the ends), KNOB 1..4 set the section's settings in order (the knob's colour marks
  * its row), PRESETS moves the cursor; OCT+ steps the cursor's setting round or opens it (CALIBRATION, ABOUT),
@@ -43,6 +43,8 @@ enum { MI_COLOR, MI_ZOOM,
                                                     * (smk_daw.h) */
        MI_DMAP, MI_KREL, MI_DEDIT, MI_DRESET,      /* SMK-37: DAW > CC MAP, KNOBS, EDIT MAP, RESET MAP (ui_daw.c) */
 #endif
+       MI_FRESO,                                   /* (2.7.2) FILTER RESO: the FM-1's AUDIO, the SMK-37's SEQ */
+       MI_ADV, MI_DPREV,                           /* (2.7.1) SEQ > STEP ADVANCE, DRUM PREVIEW */
        MI_CPU1, MI_PANEL, MI_LCLEAR, MI_ABOUT, MI_COUNT };
 #if !MI_HAS_RATE
 #define MI_RATE 0xFFu                              /* (no row: never an item) */
@@ -72,6 +74,7 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ZOOM",
                                               "FADER SCREEN", "ORGAN WHEEL", "TRS MIDI OUT",
                                               "MODE", "CHANNEL", "LOCAL", "CC MAP", "KNOBS", "EDIT MAP", "RESET MAP",
 #endif
+                                              "FILTER RESO", "STEP ADVANCE", "DRUM PREVIEW",
                                               "2ND CORE", "HARDWARE CALIBRATION", "MIDI LEARN CLEAR", "ABOUT"};
 #define MI_SYS0 MI_CPU1
 #if BOARD_SMK37
@@ -86,20 +89,20 @@ static uint8_t usbin_lvl;                          /* (audio.c: 0 DB unless set)
 static const char *const BOOT_NAME[BOOT_N] = {"SNOOP37", "SLOOP", "NONE"};
 #endif
 #if BOARD_SMK37
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PLAY, MS_FADERS, MS_MIDI, MS_DAW, MS_SYSTEM, MS_COUNT };
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_USB, MS_PLAY, MS_FADERS, MS_MIDI, MS_DAW, MS_SEQ, MS_SYSTEM, MS_COUNT };
 static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "USB", "PLAY", "FADERS", "MIDI", "DAW",
-                                              "SYSTEM"};
+                                              "SEQ", "SYSTEM"};
 static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_USBIN, MI_VEL, MI_FBS, MI_TRS, MI_DMAP,
-                                               MI_SYS0, MI_COUNT};
+                                               MI_FRESO, MI_SYS0, MI_COUNT};
 _Static_assert(MI_LIGHTS - MI_COLOR <= 4 && MI_USBIN - MI_LOWCUT <= 4 && MI_VEL - MI_USBIN <= 4 && MI_FBS - MI_VEL <= 4 &&
-               MI_TRS - MI_FBS <= 4 && MI_COUNT - MI_SYS0 <= 4,
+               MI_TRS - MI_FBS <= 4 && MI_FRESO - MI_DMAP <= 4 && MI_SYS0 - MI_FRESO <= 4 && MI_COUNT - MI_SYS0 <= 4,
                "SMK-37: four rows a section (K5..K8)");
 #define MS_GAP 10                                  /* (seven tabs: those around this one that fit, menu_tabs) */
 #else
-enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_SYSTEM, MS_COUNT };
-static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "SYSTEM"};   /* (AUDIO: and USB) */
-static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_CPU1, MI_COUNT};   /* rows of each */
-#define MS_GAP 10
+enum { MS_SCREEN, MS_LIGHTS, MS_AUDIO, MS_SEQ, MS_SYSTEM, MS_COUNT };   /* (2.7.1: SEQ) */
+static const char *const MS_NAME[MS_COUNT] = {"SCREEN", "LIGHTS", "AUDIO", "SEQ", "SYSTEM"};   /* (AUDIO: and USB) */
+static const uint8_t MS_FIRST[MS_COUNT + 1] = {MI_COLOR, MI_LIGHTS, MI_LOWCUT, MI_ADV, MI_CPU1, MI_COUNT};   /* rows of each */
+#define MS_GAP 6                                   /* (2.7.1: five sections: 6, the last ends at 236) */
 #endif
 
 UI_SMALL static int mi_cpu1_have(void)                      /* the second core is running (cpu1.c; the host tests have no cpu1.c) */
@@ -144,6 +147,8 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
         return PALETTES[settings.palette % NPALETTES].name;
     case MI_ZOOM: return settings.zoom ? "ON" : "OFF";
     case MI_ACCEL: return knob_accel_off ? "OFF" : "ON";   /* (2.7) the knobs speed up with a fast turn */
+    case MI_ADV: return step_adv_off ? "OFF" : "ON";      /* (2.7.1) the STEP page's cursor moves on when the keys are let go */
+    case MI_DPREV: return drum_preview ? "ON" : "OFF";     /* (2.7.1) a drum sound picked with a knob is heard */
     case MI_LIGHTS: return LIGHTS_NAME[lights_lvl % LIGHTS_N];
     case MI_KEYS:
         *c = lights_lvl ? C_HI : C_DIM;               /* (needs LIGHTS) */
@@ -157,6 +162,15 @@ UI_SMALL static const char *mi_value(uint32_t i, uint16_t *c)
     case MI_RATE: {                                   /* (2.7 beta) the rates the USB audio input offers (usb.c) */
         static const char *const R[3] = {"AUTO", "44.1 KHZ", "48 KHZ"};
         return R[usb_rate % 3u];
+    }
+    case MI_FRESO: {                                  /* (2.7.2) the track filter's resonance, 0 (clean) .. 10 (fx.c) */
+        static char b[4];
+        if (!flt_reso) {
+            *c = C_DIM;
+            return "OFF";
+        }
+        fmt_int(b, flt_reso > 10u ? 10 : flt_reso);
+        return b;
     }
     case MI_CPU1:                                     /* the render on both cores (fx.c); live, the sound is the same */
         *c = mi_cpu1_have() ? C_HI : C_DIM;
@@ -240,7 +254,7 @@ UI_SMALL static void draw_menu(void)
     uint32_t sig = ui.menu * 7u + ui.menu_sel * 131u + settings.palette * 1009u + settings.lowcut * 7919u +
                    settings.zoom * 104729u + lights_lvl * 1299709u + lights_keys * 15485863u + ml_count() * 2654435u +
                    lights_notes * 32452843u + usb_full * 49979687u + usb_serial * 86028121u + usb_rate * 15486719u + theme_shown() * 32452867u + theme.crc + cpu1_off * 122949829u +
-                   knob_accel_off * 179424673u;
+                   knob_accel_off * 179424673u + drum_preview * 236887691u + step_adv_off * 373587883u + flt_reso * 512927357u;
 #if SNOOP37
     sig += boot_logo * 160481183u;
 #endif
@@ -425,6 +439,12 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
     case MI_ACCEL:                                     /* (2.7) right ON, left OFF; OCT+ toggles (ui_input.c accel) */
         knob_accel_off = (uint8_t)(s > 0 ? 0u : s < 0 ? 1u : !knob_accel_off);
         break;
+    case MI_ADV:                                       /* (2.7.1) right ON, left OFF; OCT+ toggles (ui_input.c seq_entry) */
+        step_adv_off = (uint8_t)(s > 0 ? 0u : s < 0 ? 1u : !step_adv_off);
+        break;
+    case MI_DPREV:                                     /* (2.7.1) right ON, left OFF; OCT+ toggles (ui_studio.c drum_hear) */
+        drum_preview = (uint8_t)(s > 0 ? 1u : s < 0 ? 0u : !drum_preview);
+        break;
     case MI_ZOOM:
     case MI_LOWCUT: {                                  /* right ON, left OFF; OCT+ toggles */
         uint32_t *v = i == MI_LOWCUT ? &settings.lowcut : &settings.zoom;
@@ -448,6 +468,14 @@ UI_SMALL static void mi_set(uint32_t i, int32_t s)
             usb_rate--;
         else if (!s)
             usb_rate = (uint8_t)((usb_rate + 1u) % 3u);
+        break;
+    case MI_FRESO:                                     /* (2.7.2) 0 (OFF/clean) .. 10, stops at the ends; OCT+ steps round */
+        if (s > 0 && flt_reso < 10u)
+            flt_reso++;
+        else if (s < 0 && flt_reso > 0u)
+            flt_reso--;
+        else if (!s)
+            flt_reso = (uint8_t)((flt_reso >= 10u ? 0u : flt_reso + 1u));
         break;
     case MI_CPU1:                                      /* right ON, left OFF; at once (the next block renders so) */
         cpu1_off = (uint8_t)(s > 0 ? 0u : s < 0 ? 1u : !cpu1_off);

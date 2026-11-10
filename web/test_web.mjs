@@ -649,7 +649,7 @@ async function editorV5() {
   const C = E.CMD;
   const { m, rq, ev, done } = attachMock({ watchMs: 1000 });
   const info = E.parse[C.INFO](await rq(E.req.info()));
-  ok(info.proto === 12 && /SLOOP/.test(info.version) && info.pcount === 71 && info.gcount === 49 && info.pe0 === 63, "v5..v12: INFO ends with the protocol version (12: LIVE); 49 globals (2.5: drum DLY; 2.6: GLO > MIDI, TEXTURE, BEND; 2.7: FX CH, DR MAP, REMOTE, CLK OUT)");
+  ok(info.proto === 12 && /SLOOP/.test(info.version) && info.pcount === 71 && info.gcount === 50 && info.pe0 === 63, "v5..v12: INFO ends with the protocol version (12: LIVE); 50 globals (2.5: drum DLY; 2.6: GLO > MIDI, TEXTURE, BEND; 2.7: FX CH, DR MAP, REMOTE, CLK OUT; 2.7.2: FX FADE)");
   /* the firmware says the same: ED_DRUM_STEP is command 33, INFO sends 5, P_CHORD / the master globals as the mock has them */
   const ec = readFileSync(join(HERE, "../firmware/src/editor.c"), "utf8"), pc = readFileSync(join(HERE, "../firmware/src/params.c"), "utf8");
   const en = (/enum \{ ED_INFO = 1,([^}]*)\}/.exec(ec) || [])[1] || "";
@@ -1649,11 +1649,11 @@ const UPGRADE = [0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7];
 /* an FM-1 on WebMIDI: identity, then "device asks, host answers" reads of the image */
 class FakeFM1 {
   constructor(image, { unplugAfter = Infinity, finalIdentity = "FM-1_900", identity = "FM-1_015", name = "FM-1",
-                      loader = "ota-FM-1_900", outName = (n) => n, readAll = false, jump = false } = {}) {
+                      loader = "ota-FM-1_900", outName = (n) => n, readAll = false, jump = false, loaderName = "Felucca Update" } = {}) {
     this.jump = jump;   // the running firmware restarts into its loader on UPGRADE, without step 1
     this.image = image; this.unplugAfter = unplugAfter; this.served = 0; this.bad = 0;
     this.readAll = readAll; this.written = new Uint8Array(image.length); this.wrote = 0;   // readAll: the loader reads it all
-    this.finalIdentity = finalIdentity; this.loader = loader; this.outName = outName;
+    this.finalIdentity = finalIdentity; this.loader = loader; this.outName = outName; this.loaderName = loaderName;
     this.access = { inputs: new Map(), outputs: new Map() };
     this.boot(identity, name);
   }
@@ -1676,7 +1676,7 @@ class FakeFM1 {
       const body = [0, 0x59, 0x11, 0, 0, 0, ...t, ...new Array(28 - t.length).fill(0)];
       this.tx([0xF0, ...pack7(body), 0xF7]);
     } else if (eq(d, UPGRADE)) {
-      if (this.jump && !this.identity.startsWith("ota-")) { this.input.state = this.output.state = "disconnected"; setTimeout(() => this.boot(this.loader, "Felucca Update"), 300); return; }
+      if (this.jump && !this.identity.startsWith("ota-")) { this.input.state = this.output.state = "disconnected"; setTimeout(() => this.boot(this.loader, this.loaderName), 300); return; }
       const n = this.readAll ? Math.ceil(this.image.length / 512) : 6;
       this.queue = this.identity.startsWith("ota-")
         ? [...Array.from({ length: n }, (_, k) => [k * 512, Math.min(512, this.image.length - k * 512)]), [0xF0000000, 8]]
@@ -1692,7 +1692,7 @@ class FakeFM1 {
       this.waiting = null;
       this.served++;
       if (this.served >= this.unplugAfter) { this.input.state = this.output.state = "disconnected"; return; }
-      if (addr === 0xE0000000) setTimeout(() => this.boot(this.loader, "Felucca Update"), 300);
+      if (addr === 0xE0000000) setTimeout(() => this.boot(this.loader, this.loaderName), 300);
       else if (addr === 0xF0000000) setTimeout(() => this.boot(this.finalIdentity, "Felucca"), 300);
       else this.next();
     }
@@ -1717,6 +1717,21 @@ async function updater() {
   const got = await new Updater(dev.access).install(image, "FM-1_900", (k) => steps.push(k));
   ok(got === "FM-1_900" && dev.bad === 0 && steps.includes("write") && steps.at(-1) === "done",
     `fm1ota.js: install: running firmware -> loader -> Felucca (${dev.served} reads)`);
+
+  {   /* Windows names the re-enumerated update loader generically ("USB MIDI Device"): the name filter
+         misses it, so the installer must find it by its handshake or the loader "does not appear" (#loader) */
+    const win = new FakeFM1(image, { loaderName: "USB MIDI Device" });
+    const ws = [];
+    const g = await new Updater(win.access).install(image, "FM-1_900", (k) => ws.push(k));
+    ok(g === "FM-1_900" && win.bad === 0 && ws.at(-1) === "done" && !PORT_RE.test("USB MIDI Device"),
+      "fm1ota.js: a generically-named update loader (USB MIDI Device) is still found by the handshake");
+  }
+  {   /* the same loader, but the device is already stuck in update mode: resume must find it too */
+    const win2 = new FakeFM1(image, { loaderName: "USB MIDI Device" });
+    win2.boot("ota-FM-1_900", "USB MIDI Device");
+    const done = await new Updater(win2.access).resume(image, null, { package: "FM-1_900" });   /* (the package's identity: snoop37) */
+    ok(done === true && win2.bad === 0, "fm1ota.js: resume finds a generically-named loader already in update mode");
+  }
 
   const rescue = new FakeFM1(image);
   rescue.boot("FM-1_000", "Felucca");

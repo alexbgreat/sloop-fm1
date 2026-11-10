@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Host test of the SMK-37's USB audio output descriptors (src/usb.c FELUCCA_UAC_OUT): the configuration parsed as a
- * host does: lengths, four interfaces, the AC header's collection (1 2 3) and its wTotalLength, terminals 3 (USB
+ * host does: lengths, four interfaces, the AC header's collection (2 3 1: the streams first, MIDI last, 2.8) and its wTotalLength, terminals 3 (USB
  * streaming) -> 4 (speaker), interface 3's alt 0 / alt 1, its type I format (2 ch 16 bit 44.1) and EP 0x03
  * (isochronous adaptive, 192 B), next to the input's EP 0x84. The SIE is never touched. */
 #include <stdint.h>
@@ -58,7 +58,7 @@ static int walk(uint32_t mode)
             ac_sum += p[0];
             if (p[2] == 1u) {
                 ac_wt = p[5] | (uint32_t)p[6] << 8;
-                coll = p[0] == 11u && p[7] == 3u && p[8] == 1u && p[9] == 2u && p[10] == 3u;
+                coll = p[0] == 11u && p[7] == 3u && p[8] == 2u && p[9] == 3u && p[10] == 1u;   /* (2.8: the streams first, MIDI last: macOS) */
             }
             if (p[2] == 2u && p[3] == 3u && p[4] == 0x01u && p[5] == 0x01u && p[7] == 2u)
                 it3 = 1;
@@ -87,7 +87,7 @@ static int walk(uint32_t mode)
     snprintf(name, sizeof name, "USB RATE %u: lengths add up to wTotalLength (%u)", (unsigned)mode, (unsigned)cl);
     check(name, lens && off == cl && (c[2] | c[3] << 8) == cl);
     check("  four interfaces", c[4] == 4u && nif_alt0 == 4u);
-    check("  AC header: collection 1 2 3, wTotalLength = its descriptors", coll && ac_wt == ac_sum);
+    check("  AC header: collection 2 3 1 (streams first, MIDI last), wTotalLength = its descriptors", coll && ac_wt == ac_sum);
     check("  input terminal 3: USB streaming, 2 ch", it3);
     check("  feature unit 6: from 1 (the line), mute; output terminal 2 from 6", fu6 && ot2);
     check("  feature unit 5: from 3, master mute + volume", fu5);
