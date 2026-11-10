@@ -15,7 +15,7 @@ sample_render 126
 formant_render 314
 trio_render 341
 trio_pass 175
-drawbar_render 267
+drawbar_render 327
 drawbar_block 102
 grain_render 1734
 grain_block 138
