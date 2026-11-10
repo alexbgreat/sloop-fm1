@@ -27,6 +27,9 @@ static int32_t rev_l[CTL], rev_r[CTL];   /* the reverb's own return of this bloc
 /* DIST: low cut -> drive (1x..8x, exponential) -> asymmetric soft clip
  * (a little bias = even harmonics) -> tone low-pass that closes with drive ->
  * make-up gain. State per part (track_t dist_*). */
+/* a x b >> s through a 32 x 32 -> 64 bit product (one multiply on the target): no pre-shift, no lost bits */
+#define MIX_MUL(a, b, s) ((int32_t)(((int64_t)(int32_t)(a) * (int32_t)(b)) >> (s)))
+
 static void track_dist(track_t *t, int32_t *b, uint32_t n)
 {
     int32_t d = t->p[P_DIST], i, g, k, mk, bias = 2400, b0;
@@ -728,10 +731,12 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
         t->lvl = mix_glide(lvl0, lvl), t->gpl = mix_glide(gl0, gl), t->gpr = mix_glide(gr0, gr);
         dl = (t->lvl - lvl0) >> CTL_LOG2, dgl = t->gpl - gl0, dgr = t->gpr - gr0;
         for (i = 0; i < n; i++) {
-            int32_t x = ((b[i] >> 2) * (lvl0 + dl * (int32_t)i)) >> 10, a;   /* pre-shift: 8 loud voices */
+            int32_t x = MIX_MUL(b[i], lvl0 + dl * (int32_t)i, 12), a;   /* (64-bit products here: the pre-shifts these
+                                                         * had, >> 2 and >> 4, truncated the mix to ~11 bits, a hiss
+                                                         * at -74 dBFS under any sounding part) */
             int32_t xs, g = ga + (((gb - ga) * (int32_t)i) >> CTL_LOG2);
             if (g < 32767)
-                x = (x >> 4) * (g >> 3) >> 8;           /* (Q15 in two halves: no 32-bit overflow) */
+                x = MIX_MUL(x, g, 15);
             a = x < 0 ? -x : x;
             xs = clamp(x, -xmax, xmax);                 /* sends: mulq15 would overflow */
             if (a > pk)
@@ -743,8 +748,8 @@ static void mix_part_run(track_t *t, uint32_t n, mixacc_t *mx, int32_t *b)
             if (r)
                 mx->sr[i] += mulq15(xs, r);
             gl = gl0 + ((dgl * (int32_t)i) >> CTL_LOG2), gr = gr0 + ((dgr * (int32_t)i) >> CTL_LOG2);   /* (2.7) */
-            mx->l[i] += ((x >> 4) * gl) >> 8;           /* (x may pass 2^19: >> 4 first) */
-            mx->r[i] += ((x >> 4) * gr) >> 8;
+            mx->l[i] += MIX_MUL(x, gl, 12);
+            mx->r[i] += MIX_MUL(x, gr, 12);
         }
         t->peak = pk;
     }
@@ -1251,15 +1256,15 @@ static void mix_block(int32_t *out, uint32_t n)
         static uint8_t usb_was;
         for (i = 0; i < n; i++) {
             int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
-            ol[i] = ((mix_l[i] >> 2) * m) >> 10;
-            orr[i] = ((mix_r[i] >> 2) * m) >> 10;
+            ol[i] = MIX_MUL(mix_l[i], m, 12);
+            orr[i] = MIX_MUL(mix_r[i], m, 12);
             master_pre(&ol[i], &orr[i]);
             if ((i & 1u)) {                             /* the visualiser: every other sample, as audio.c reads it */
                 vis_tap[2u * i] = (int16_t)knee(mix_l[i]);
                 vis_tap[2u * i + 1u] = (int16_t)knee(mix_r[i]);
             }
             if (usb_full_now) {                         /* USB AUDIO = FULL: MASTER all the way up (4096) */
-                ul[i] = (mix_l[i] >> 2) << 2, ur[i] = (mix_r[i] >> 2) << 2;
+                ul[i] = mix_l[i], ur[i] = mix_r[i];
                 master_pre_usb(&ul[i], &ur[i]);
             }
         }
