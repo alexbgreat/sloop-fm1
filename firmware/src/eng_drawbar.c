@@ -27,9 +27,9 @@
  * ~1 s, the low one in ~4 s); each gives its partials an amplitude and a pitch (Doppler)
  * modulation whose depth follows its speed. All of it is folded into the per-block partial
  * gains and increments: no delay line, no per-sample cost. OFF fades it out and stops them.
- * HORN (SMK-37's 4-stage rotor switch): the horn (the high rotor, the "tweeter") FAST, the drum
- * still SLOW. The values are 0 OFF, 1 SLOW, 2 FAST (as ever: older projects and presets play as
- * before), 3 HORN; the switch's order is OFF SLOW HORN FAST (DRW_ROT_STAGE).
+ * HORN (between SLOW and FAST): the horn (the high rotor, the "tweeter") FAST, the drum still
+ * SLOW. The values are 0 OFF, 1 SLOW, 2 HORN, 3 FAST; what is stored (projects, user presets)
+ * keeps the older numbering, 2 FAST, 3 HORN (drw_rotr_io), so older data plays as before.
  *
  * Envelope: an organ gate (the presets set A 0, S 127, a short R); the track ADSR still applies.
  * Cost: per sample and partial one interpolated table lookup and a multiply-add (a gain ramp only
@@ -95,10 +95,10 @@ static const char DRW_REG[16][DRW_NP + 1] = {
     "888888888", /* FULL   everything */
 };
 static const char *const N_DRW_PERC[] = {"OFF", "2ND", "3RD", "2SOFT", "3SOFT", "2SLOW", "3SLOW"};
-static const char *const N_DRW_ROTR[] = {"OFF", "SLOW", "FAST", "HORN"};
-/* the rotor switch's stages (STOP, SLOW, FAST HORN, FAST) <-> ROTR's values; the table is its own inverse */
-static const uint8_t DRW_ROT_STAGE[4] = {0, 1, 3, 2};
+static const char *const N_DRW_ROTR[] = {"OFF", "SLOW", "HORN", "FAST"};
 static const char *const DRW_ROT_MSG[4] = {"ROTOR: STOP", "ROTOR: SLOW", "ROTOR: FAST HORN", "ROTOR: FAST"};
+/* ROTR as stored <-> as played: stored 0 OFF, 1 SLOW, 2 FAST, 3 HORN (FAST was 2 before HORN came); its own inverse */
+static inline int32_t drw_rotr_io(int32_t v) { return v == 2 ? 3 : v == 3 ? 2 : v; }
 
 /* partial frequency / note frequency, as a shift-and-add of the note's increment; FOLD_LIM:
  * the note increment above which the partial would pass DRW_FOLD */
@@ -283,7 +283,7 @@ static void drawbar_block(track_t *t)
         if (!rot)                                       /* STOP: the brake, DRAG 0..31 -> 1..256 (15: 64, as ACCEL's) */
             acc = ((r[RT_DRAG] + 1) * (r[RT_DRAG] + 1)) >> 2 | 1;
         if (rot) {                                      /* the horn FAST on FAST and HORN, the drum FAST on FAST only */
-            uint32_t sh = rot == 1u ? 1u : 2u, sd = rot == 2u ? 2u : 1u, k2;
+            uint32_t sh = rot == 1u ? 1u : 2u, sd = rot == 3u ? 2u : 1u, k2;
             for (k2 = 0; k2 < 2u; k2++) {
                 uint32_t si = k2 ? sd : sh, ri = si == 1u ? RT_SLOW : RT_FAST;
                 int32_t hv = r[ri], std = hv == DRW_ROT_DESC[ri].def, horn = std ? DRW_ROT_SPD[0][si] : hv * DRW_HZ(0.1);
@@ -418,13 +418,13 @@ static void drawbar_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
 static const preset_t DRAWBAR_PRESETS[] = {
     /* name, {REG, SUB, BODY, TOP, PERC, CLICK, DRIVE, ROTR}, {A D S R}, fenv, mono */
     {"SOUL ORGAN", {3, 0, 0, 0, 0, 25, 10, 1}, {0, 64, 127, 40}, 0, 0, FX(0, 0, 0, 22)},
-    {"GOSPEL", {6, 0, 0, 0, 1, 60, 40, 2}, {0, 64, 127, 45}, 0, 0, FX(0, 0, 0, 30)},
+    {"GOSPEL", {6, 0, 0, 0, 1, 60, 40, 3}, {0, 64, 127, 45}, 0, 0, FX(0, 0, 0, 30)},
     {"JAZZ ORGAN", {4, 0, 0, 0, 2, 50, 8, 1}, {0, 64, 127, 40}, 0, 0, FX(0, 0, 0, 22)},
-    {"DIRTY B3", {5, 0, 0, 0, 0, 60, 90, 2}, {0, 64, 127, 40}, 0, 0, FX(30, 0, 6, 20)},
+    {"DIRTY B3", {5, 0, 0, 0, 0, 60, 90, 3}, {0, 64, 127, 40}, 0, 0, FX(30, 0, 6, 20)},
     /* 90s house: the percussive organ that plays bass lines and chords */
     {"HOUSE ORGN", {13, 2, 0, 1, 1, 80, 22, 0}, {0, 60, 96, 22}, 0, 0, FX(0, 10, 12, 18)},
     /* SLOOP 2.5: {REG, SUB, BODY, TOP, PERC, CLICK, DRIVE, ROTR} */
-    {"ROCK ORGAN", {7, 0, 0, 0, 0, 50, 80, 2}, {0, 64, 127, 40}, 0, 0, FX(20, 0, 6, 20)},
+    {"ROCK ORGAN", {7, 0, 0, 0, 0, 50, 80, 3}, {0, 64, 127, 40}, 0, 0, FX(20, 0, 6, 20)},
     {"CHAPEL", {12, 0, 0, 0, 0, 10, 0, 1}, {20, 64, 127, 60}, 0, 0, FX(0, 0, 0, 50)},
     {"REGGAE ORG", {2, 0, 0, 0, 0, 60, 10, 0}, {0, 52, 0, 24}, 0, 0, FX(0, 0, 10, 15)},
 };

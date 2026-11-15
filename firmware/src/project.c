@@ -481,6 +481,8 @@ UI_SMALL static void proj_capture(project_t *p)        /* what is playing now, a
             for (k = 0; k < 3u; k++)                    /* DRAWBAR: SUB BODY TOP and REG CUSTM's nine bars in E1..E3 */
                 p->t[i].e[1u + k] = drw_pack(&trk[i], k);
         if (i < NPART && trk[i].eng_req == ENGI_DRAWBAR)
+            pt_set(&p->t[i], P_E7, (int16_t)drw_rotr_io(trk[i].p[P_E7]));   /* (ROTR in the older numbering) */
+        if (i < NPART && trk[i].eng_req == ENGI_DRAWBAR)
             drw_rot_pack(&trk[i], p->t[i].e);           /* and the ROTOR pages, in E0 and E4..E7's spare bits */
     }
     drum_tw_put(p);                                     /* (2.7) the drum sounds' TUNE and DECAY */
@@ -515,6 +517,8 @@ static void proj_apply(const project_t *p, int all)
             int32_t v = pt_get(s, i);
             if (k < NPART && e == ENGI_DRAWBAR && i >= P_E0)
                 v = drw_e_low(i - P_E0, v);             /* (DRAWBAR: the ROTOR pages ride in the spare bits) */
+            if (k < NPART && e == ENGI_DRAWBAR && i == P_E7)
+                v = drw_rotr_io(v);                     /* (ROTR stored in the older numbering) */
             t->p[i] = (int16_t)clamp(v, d->min, d->max);
         }
         if (k < NPART && e == ENGI_DRAWBAR)

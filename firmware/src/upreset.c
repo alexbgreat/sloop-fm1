@@ -167,6 +167,10 @@ UI_SMALL static int up_parse(const uint8_t *a, uint32_t na, up_rec_t *r, uint32_
         r->name[i] = (char)a[2 + i];
     for (i = 0; i < P_COUNT; i++, k += 2u)
         r->p[i] = (int16_t)((int32_t)((a[k] & 127u) | (a[k + 1] & 127u) << 7) - 8192);
+#ifdef ENGI_DRAWBAR
+    if (r->engine == ENGI_DRAWBAR)
+        r->p[P_E7] = (int16_t)drw_rotr_io(r->p[P_E7]);   /* (ROTR stored in the older numbering: eng_drawbar.c) */
+#endif
     for (i = 0; i < 16u; i++, k += 2u) {
         r->note[i] = a[k];
         r->flags[i] = a[k + 1];
@@ -188,6 +192,8 @@ UI_SMALL static void up_values(const up_rec_t *r, int16_t *v)   /* mapped and cl
     for (i = 0; i < P_COUNT; i++)
         def[i] = up_desc(r->engine, i)->def;
     up_params(r, v, def);
+    if (r->engine == ENGI_DRAWBAR)
+        v[P_E7] = (int16_t)drw_rotr_io(v[P_E7]);         /* (ROTR stored in the older numbering: eng_drawbar.c) */
     for (i = 0; i < P_COUNT; i++)
         v[i] = (int16_t)clamp(v[i], up_desc(r->engine, i)->min, up_desc(r->engine, i)->max);
 }
@@ -265,6 +271,8 @@ UI_SMALL static int up_store(uint32_t k, const char *name)
     }
     for (i = 0; i < P_COUNT; i++)
         r.p[i] = TSEL->p[i];
+    if (r.engine == ENGI_DRAWBAR)
+        r.p[P_E7] = (int16_t)drw_rotr_io(r.p[P_E7]);     /* (ROTR stored in the older numbering: eng_drawbar.c) */
     up_pat_from(&r, TSEL->step);
     return up_put(k, &r);
 }

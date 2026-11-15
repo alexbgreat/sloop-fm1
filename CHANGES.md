@@ -4,7 +4,7 @@
 
 - **4-stage rotor** (organ, SMK-37): the mod wheel is now a four-position rotor switch, STOP, SLOW, FAST HORN (the
   horn at tremolo speed, the drum still slow) and FAST (both), and so is fader bank G's ROTOR fader. DRAWBAR's ROTR
-  gets the matching HORN value; older projects and presets play as before. See [SMK37.md](SMK37.md#organ-mode).
+  gets HORN between SLOW and FAST; older projects and user presets play as before. See [SMK37.md](SMK37.md#organ-mode).
 
 - **5-band parametric EQ** (GLO > EQ, SMK-37 builds): the last filter of the master bus, in front of the MASTER volume,
   so it shapes the headphone/line output, the USB recording and the visualiser alike. Each band is a BELL, LOW SHELF,

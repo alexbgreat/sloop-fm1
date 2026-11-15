@@ -223,7 +223,7 @@ static void smk_rotor_wheel(int32_t m)
     if (z > zone ? m < SMK_ROT_EDGE[z - 1u] + SMK_ROT_HYST : m >= SMK_ROT_EDGE[z] - SMK_ROT_HYST)
         return;                                       /* (still inside the edge's hysteresis) */
     zone = (uint8_t)z;
-    t->p[P_E7] = (int16_t)DRW_ROT_STAGE[z];
+    t->p[P_E7] = (int16_t)z;                         /* (ROTR's values are the stages: OFF SLOW HORN FAST) */
     ui_message(DRW_ROT_MSG[z]);
     ui.force = 1;
 }
