@@ -78,6 +78,8 @@ static int32_t fb_organ(uint32_t g, uint32_t i, const char **lab, char *val, con
         int16_t v = t->p[FB_OPAR[(k - DRW_NP) % 3u]];
         *lab = d->label;
         param_format(d, v, val, unit);
+        if (FB_OPAR[(k - DRW_NP) % 3u] == P_E7)       /* ROTOR: the switch's order, STOP SLOW HORN FAST */
+            return (int32_t)DRW_ROT_STAGE[(uint32_t)v & 3u] * 1000 / 3;
         return RATIO(d, v);
     }
 }
@@ -91,6 +93,10 @@ static void fb_organ_set(uint32_t g, uint32_t i, uint32_t v)
     } else {
         const param_desc_t *d = &ENG_DRAWBAR.edit[FB_OPAR[(k - DRW_NP) % 3u] - P_E0];
         int32_t n = d->max - d->min + 1;
+        if (FB_OPAR[(k - DRW_NP) % 3u] == P_E7) {      /* ROTOR: four positions, STOP SLOW HORN FAST from the bottom */
+            t->p[P_E7] = (int16_t)DRW_ROT_STAGE[v * 4u / 128u];
+            return;
+        }
         t->p[FB_OPAR[(k - DRW_NP) % 3u]] = (int16_t)(d->fmt == F_ENUM ? d->min + (int32_t)v * n / 128 :
                                                      d->min + (int32_t)v * (d->max - d->min) / 127);
     }

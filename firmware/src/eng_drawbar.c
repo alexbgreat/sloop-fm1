@@ -27,6 +27,9 @@
  * ~1 s, the low one in ~4 s); each gives its partials an amplitude and a pitch (Doppler)
  * modulation whose depth follows its speed. All of it is folded into the per-block partial
  * gains and increments: no delay line, no per-sample cost. OFF fades it out and stops them.
+ * HORN (SMK-37's 4-stage rotor switch): the horn (the high rotor, the "tweeter") FAST, the drum
+ * still SLOW. The values are 0 OFF, 1 SLOW, 2 FAST (as ever: older projects and presets play as
+ * before), 3 HORN; the switch's order is OFF SLOW HORN FAST (DRW_ROT_STAGE).
  *
  * Envelope: an organ gate (the presets set A 0, S 127, a short R); the track ADSR still applies.
  * Cost: per sample and partial one interpolated table lookup and a multiply-add (a gain ramp only
@@ -92,7 +95,10 @@ static const char DRW_REG[16][DRW_NP + 1] = {
     "888888888", /* FULL   everything */
 };
 static const char *const N_DRW_PERC[] = {"OFF", "2ND", "3RD", "2SOFT", "3SOFT", "2SLOW", "3SLOW"};
-static const char *const N_DRW_ROTR[] = {"OFF", "SLOW", "FAST"};
+static const char *const N_DRW_ROTR[] = {"OFF", "SLOW", "FAST", "HORN"};
+/* the rotor switch's stages (STOP, SLOW, FAST HORN, FAST) <-> ROTR's values; the table is its own inverse */
+static const uint8_t DRW_ROT_STAGE[4] = {0, 1, 3, 2};
+static const char *const DRW_ROT_MSG[4] = {"ROTOR: STOP", "ROTOR: SLOW", "ROTOR: FAST HORN", "ROTOR: FAST"};
 
 /* partial frequency / note frequency, as a shift-and-add of the note's increment; FOLD_LIM:
  * the note increment above which the partial would pass DRW_FOLD */
@@ -245,7 +251,7 @@ static void drawbar_block(track_t *t)
 {
     drw_trk_t *T = &drw_of(t)->t;
     const int16_t *p = t->p;
-    uint32_t k, perc = (uint32_t)p[P_E4] % 7u, rot = (uint32_t)p[P_E7] % 3u;
+    uint32_t k, perc = (uint32_t)p[P_E4] % 7u, rot = (uint32_t)p[P_E7] % 4u;
     int32_t s = 0, lv[DRW_NP];
     uint32_t norm;
     for (k = 0; k < DRW_NP; k++) {
@@ -276,11 +282,16 @@ static void drawbar_block(track_t *t)
         int32_t tgt[2] = {0, 0}, acc = r[RT_ACCEL] < 4 ? 4 : r[RT_ACCEL];
         if (!rot)                                       /* STOP: the brake, DRAG 0..31 -> 1..256 (15: 64, as ACCEL's) */
             acc = ((r[RT_DRAG] + 1) * (r[RT_DRAG] + 1)) >> 2 | 1;
-        if (rot) {
-            uint32_t ri = rot == 1u ? RT_SLOW : RT_FAST;
-            int32_t hv = r[ri], std = hv == DRW_ROT_DESC[ri].def;
-            tgt[0] = std ? DRW_ROT_SPD[0][rot] : hv * DRW_HZ(0.1);
-            tgt[1] = std && r[RT_DRUM] == 87 ? DRW_ROT_SPD[1][rot] : tgt[0] / 100 * r[RT_DRUM];
+        if (rot) {                                      /* the horn FAST on FAST and HORN, the drum FAST on FAST only */
+            uint32_t sh = rot == 1u ? 1u : 2u, sd = rot == 2u ? 2u : 1u, k2;
+            for (k2 = 0; k2 < 2u; k2++) {
+                uint32_t si = k2 ? sd : sh, ri = si == 1u ? RT_SLOW : RT_FAST;
+                int32_t hv = r[ri], std = hv == DRW_ROT_DESC[ri].def, horn = std ? DRW_ROT_SPD[0][si] : hv * DRW_HZ(0.1);
+                if (!k2)
+                    tgt[0] = horn;
+                else
+                    tgt[1] = std && r[RT_DRUM] == 87 ? DRW_ROT_SPD[1][si] : horn / 100 * r[RT_DRUM];
+            }
         }
         for (k = 0; k < 2u; k++) {
             int32_t sp, c, sn, dep;
@@ -428,7 +439,7 @@ static const engine_t ENG_DRAWBAR = {
         {"PERC", F_ENUM, 0, 6, 0, N_DRW_PERC, 0},
         {"CLICK", F_PCT, 0, 127, 40, 0, 0},
         {"DRV", F_PCT, 0, 127, 0, 0, 0},
-        {"ROTR", F_ENUM, 0, 2, 1, N_DRW_ROTR, 0},
+        {"ROTR", F_ENUM, 0, 3, 1, N_DRW_ROTR, 0},
     },
     DRAWBAR_PRESETS, sizeof(DRAWBAR_PRESETS) / sizeof(DRAWBAR_PRESETS[0]), -1, drawbar_note_on, drawbar_render,
     0xBC1F, {P_E0, P_E4, P_E6, P_E7}, 0, 0, 0, drawbar_block,

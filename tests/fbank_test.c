@@ -65,8 +65,12 @@ int main(int argc, char **argv)
         check(drw_bar(&trk[0], 7) == 0u, "organ: 1 1/3' at 0");
         fb_organ_set(2, 3, 127);
         check(trk[0].p[P_E7] == 2, "organ: bank G fader 4 up: ROTOR FAST");
-        fb_organ_set(2, 3, 64);
-        check(trk[0].p[P_E7] == 1, "organ: ROTOR fader middle: SLOW");
+        fb_organ_set(2, 3, 80);
+        check(trk[0].p[P_E7] == 3, "organ: ROTOR fader third quarter: FAST HORN");
+        fb_organ_set(2, 3, 40);
+        check(trk[0].p[P_E7] == 1, "organ: ROTOR fader second quarter: SLOW");
+        fb_organ_set(2, 3, 0);
+        check(trk[0].p[P_E7] == 0, "organ: ROTOR fader down: STOP");
         fb_organ_set(2, 1, 127);
         check(trk[0].p[P_E4] == 6, "organ: PERC fader up: the last PERC");
         {

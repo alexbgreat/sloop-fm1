@@ -197,15 +197,14 @@ static void smk_faders(void)
     }
 }
 
-/* organ mode: the mod wheel is the rotor switch, three positions: bottom STOP (DRAWBAR's ROTR OFF), middle SLOW, top
- * FAST (voice.c: no mod-wheel vibrato on DRAWBAR). It sets ROTR only when it moves into another position (4 steps of
- * hysteresis at each edge), so a preset's or a knob's ROTR stays until the wheel moves; a track change, likewise */
-#define SMK_ROT_EDGE1 43
-#define SMK_ROT_EDGE2 85
+/* organ mode: the mod wheel is the rotor switch, four positions from the bottom: STOP (DRAWBAR's ROTR OFF), SLOW,
+ * FAST HORN (the horn fast, the drum slow: ROTR HORN), FAST (voice.c: no mod-wheel vibrato on DRAWBAR). It sets ROTR
+ * only when it moves into another position (4 steps of hysteresis at each edge), so a preset's or a knob's ROTR stays
+ * until the wheel moves; a track change, likewise */
 #define SMK_ROT_HYST 4
+static const uint8_t SMK_ROT_EDGE[3] = {32, 64, 96};
 static void smk_rotor_wheel(int32_t m)
 {
-    static const char *const MSG[3] = {"ROTOR: STOP", "ROTOR: SLOW", "ROTOR: FAST"};
     static uint8_t zone = 0xFF, sel = 0xFF;
     track_t *t = TSEL;
     uint32_t z;
@@ -213,19 +212,19 @@ static void smk_rotor_wheel(int32_t m)
         zone = 0xFF;
         return;
     }
-    z = m < SMK_ROT_EDGE1 ? 0u : m < SMK_ROT_EDGE2 ? 1u : 2u;
-    if (zone > 2u || sel != song.sel) {               /* (organ mode just began: where the wheel is, nothing set) */
+    for (z = 0; z < 3u && m >= SMK_ROT_EDGE[z]; z++)
+        ;
+    if (zone > 3u || sel != song.sel) {               /* (organ mode just began: where the wheel is, nothing set) */
         zone = (uint8_t)z, sel = song.sel;
         return;
     }
     if (z == zone)
         return;
-    if (z > zone ? m < (z == 1u ? SMK_ROT_EDGE1 : SMK_ROT_EDGE2) + SMK_ROT_HYST
-                 : m >= (z == 0u ? SMK_ROT_EDGE1 : SMK_ROT_EDGE2) - SMK_ROT_HYST)
+    if (z > zone ? m < SMK_ROT_EDGE[z - 1u] + SMK_ROT_HYST : m >= SMK_ROT_EDGE[z] - SMK_ROT_HYST)
         return;                                       /* (still inside the edge's hysteresis) */
     zone = (uint8_t)z;
-    t->p[P_E7] = (int16_t)z;
-    ui_message(MSG[z]);
+    t->p[P_E7] = (int16_t)DRW_ROT_STAGE[z];
+    ui_message(DRW_ROT_MSG[z]);
     ui.force = 1;
 }
 
